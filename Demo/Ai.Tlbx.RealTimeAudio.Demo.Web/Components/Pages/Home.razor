@@ -17,27 +17,27 @@
         <div class="lg:w-1/3">
             <div class="bg-white rounded-lg shadow-md p-4 mb-4">
                 <h3 class="text-xl font-bold text-gray-800 mb-4">Voice Controls</h3>
-                
+
                 <div class="flex gap-2 mb-4">
                     <button class="flex-1 py-2 px-4 rounded-md @(rta.IsRecording ? "bg-gray-500" : "bg-blue-600") text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                            @onclick="StartSession"
-                            disabled="@(rta.IsRecording || rta.IsConnecting)">
+                    @onclick="StartSession"
+                    disabled="@(rta.IsRecording || rta.IsConnecting)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
                         </svg>
                         Start
                     </button>
                     <button class="flex-1 py-2 px-4 rounded-md @(rta.IsRecording ? "bg-red-600" : "bg-gray-500") text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                            @onclick="StopSession"
-                            disabled="@(!rta.IsRecording || rta.IsConnecting)">
+                    @onclick="StopSession"
+                    disabled="@(!rta.IsRecording || rta.IsConnecting)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
                         </svg>
                         Stop
                     </button>
                     <button class="flex-1 py-2 px-4 rounded-md bg-amber-500 text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                            @onclick="InterruptSpeech"
-                            disabled="@(!rta.IsInitialized || rta.IsConnecting)">
+                    @onclick="InterruptSpeech"
+                    disabled="@(!rta.IsInitialized || rta.IsConnecting)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
                         </svg>
@@ -48,8 +48,8 @@
                 <div class="mb-4">
                     <label for="voiceSelect" class="block text-sm font-medium text-gray-700 mb-1">Assistant Voice</label>
                     <select id="voiceSelect" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                            @bind="CurrentVoiceString" 
-                            disabled="@rta.IsConnecting">
+                    @bind="CurrentVoiceString" 
+                    disabled="@rta.IsConnecting">
                         <option value="alloy">Alloy</option>
                         <option value="ash">Ash</option>
                         <option value="ballad">Ballad</option>
@@ -64,28 +64,79 @@
                     </select>
                 </div>
 
+                <!-- Microphone selection dropdown -->
+                <div class="mb-4">
+                    <label for="microphoneSelect" class="block text-sm font-medium text-gray-700 mb-1">Microphone</label>
+                    <div class="flex gap-2">
+                        <select id="microphoneSelect" class="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                        @bind="selectedMicrophoneId" 
+                        disabled="@(rta.IsRecording || rta.IsConnecting || (!micPermissionGranted && !rta.IsRecording))">
+                            @if (!micPermissionGranted && !rta.IsRecording)
+                            {
+                                <option value="">Permission required</option>
+                            }
+                            else if (availableMicrophones.Count == 0)
+                            {
+                                <option value="">No microphones found</option>
+                            }
+                            else
+                            {
+                                @foreach (var mic in availableMicrophones)
+                                {
+                                    <option value="@mic.Id">@mic.Name @(mic.IsDefault ? "(Default)" : "")</option>
+                                }
+                            }
+                        </select>
+                        <button class="p-2 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors flex items-center justify-center"
+                        @onclick="RequestMicrophonePermission"
+                        disabled="@(rta.IsRecording || rta.IsConnecting || isLoadingMicrophones)">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </div>
+                    @if (!micPermissionGranted && !rta.IsRecording)
+                    {
+                        <div class="mt-1 text-xs text-amber-600">
+                            <span>Click the microphone button to allow access</span>
+                        </div>
+                    }
+                    else if (rta.IsRecording)
+                    {
+                        <div class="mt-1 text-xs text-blue-600">
+                            <span>Microphone active - using @(availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "selected device")</span>
+                        </div>
+                    }
+                    else if (isLoadingMicrophones)
+                    {
+                        <div class="mt-1 text-xs text-blue-600">
+                            <span>Loading microphones...</span>
+                        </div>
+                    }
+                </div>
+
                 <div class="mb-4 flex items-center">
                     <input type="checkbox" id="timeToolCheck" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-2" 
-                           @bind="useTimeTool" 
-                           disabled="@rta.IsRecording"> 
+                    @bind="useTimeTool" 
+                    disabled="@rta.IsRecording"> 
                     <label for="timeToolCheck" class="text-sm font-medium text-gray-700">Enable Current Time Tool</label>
                 </div>
 
                 <div class="mt-4">
                     <button class="w-full py-2 px-4 rounded-md bg-gray-200 text-gray-800 font-medium hover:bg-gray-300 transition-colors flex items-center justify-center"
-                            @onclick="ClearChat"
-                            disabled="@(rta.IsConnecting)">
+                    @onclick="ClearChat"
+                    disabled="@(rta.IsConnecting)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
                         </svg>
                         Clear Chat
                     </button>
                 </div>
-                
+
                 <div class="mt-4">
                     <button class="w-full py-2 px-4 rounded-md bg-indigo-500 text-white font-medium hover:bg-indigo-600 transition-colors flex items-center justify-center"
-                            @onclick="TestMicrophone"
-                            disabled="@(rta.IsRecording || rta.IsMicrophoneTesting || rta.IsConnecting)">
+                    @onclick="TestMicrophone"
+                    disabled="@(rta.IsRecording || rta.IsMicrophoneTesting || rta.IsConnecting)">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
                         </svg>
@@ -135,8 +186,8 @@
                                 <span class="text-indigo-800">@micTestStatus</span>
                             </div>
                             <button 
-                                class="text-xs bg-red-100 hover:bg-red-200 text-red-800 font-medium py-1 px-2 rounded" 
-                                @onclick="CancelMicrophoneTest">
+                            class="text-xs bg-red-100 hover:bg-red-200 text-red-800 font-medium py-1 px-2 rounded" 
+                            @onclick="CancelMicrophoneTest">
                                 Cancel
                             </button>
                         </div>
@@ -151,7 +202,7 @@
                 <div class="p-4 border-b border-gray-200">
                     <h3 class="text-xl font-bold text-gray-800">Conversation</h3>
                 </div>
-                
+
                 <div class="flex-1 p-4 overflow-y-auto space-y-4" id="chat-messages" @ref="chatContainer">
                     @if (!rta.ChatHistory.Any())
                     {
@@ -213,7 +264,7 @@
                                 <div class="flex justify-center">
                                     <div class="w-[90%] rounded-md px-3 py-2 bg-teal-100 text-teal-800 border border-teal-200 text-sm">
                                         <div class="flex items-center font-medium mb-1">
-                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
                                             <span>Tool Result: @message.ToolName</span>
                                             <span class="text-xs text-teal-500 ml-auto">@message.Timestamp.ToString("h:mm:ss tt")</span>
                                         </div>
@@ -227,7 +278,7 @@
                         }
                     }
                 </div>
-                
+
                 <div class="p-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600">
                     @if (rta.IsRecording)
                     {
@@ -245,7 +296,7 @@
                     }
                 </div>
             </div>
-            
+
             @if (!string.IsNullOrEmpty(rta.ConnectionStatus))
             {
                 <div class="mt-4 bg-gray-100 p-3 rounded-md text-gray-700 text-sm">
@@ -256,21 +307,170 @@
     </div>
 </div>
 
-@code {
+@code 
+{
     private ElementReference chatContainer;
     private string currentVoiceString = string.Empty;
     private string micTestStatus = "Testing microphone...";
     private bool useTimeTool = true;
-    private bool isToolDetailsExpanded = false; // Example state for expand/collapse (if needed beyond <details>)
+    
+    // Microphone selection related fields
+    private List<AudioDeviceInfo> availableMicrophones = new List<AudioDeviceInfo>();
+    private string selectedMicrophoneId = string.Empty;
+    private bool isLoadingMicrophones = false;
+    private bool micPermissionGranted = false;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         rta.ConnectionStatusChanged += OnConnectionStatusChanged;
         rta.MessageAdded += OnMessageAdded;
         rta.MicrophoneTestStatusChanged += OnMicrophoneTestStatusChanged;
+        rta.MicrophoneDevicesChanged += OnMicrophoneDevicesChanged;
         
+        // Listen for recording state changes
+        PropertyChanged += OnPropertyChanged;
+
         // Initialize the string value based on the current enum value
         currentVoiceString = rta.CurrentVoice.ToString().ToLower();
+
+        // Check if microphone permission is already granted
+        await CheckMicrophonePermission();
+    }
+    
+    // Simple property changed handler to detect recording state changes
+    private void OnPropertyChanged(object? sender, EventArgs e)
+    {
+        // Make sure to preserve mic permission state even when recording state changes
+        if (!micPermissionGranted && availableMicrophones.Count > 0)
+        {
+            micPermissionGranted = true;
+            InvokeAsync(StateHasChanged);
+        }
+    }
+    
+    // Simulate a property changed event for state monitoring
+    private event EventHandler? PropertyChanged;
+    
+    private void RaisePropertyChanged()
+    {
+        PropertyChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private async Task CheckMicrophonePermission()
+    {
+        try
+        {
+            // Try to get microphones - this will succeed if permission is already granted
+            var mics = await rta.GetAvailableMicrophones();
+            
+            // Check if we have actual device information - actual device labels mean permission is granted
+            bool hasRealDeviceNames = mics.Count > 0 && 
+                mics.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
+                
+            micPermissionGranted = hasRealDeviceNames;
+            Console.WriteLine($"Initial permission check: Permission granted: {micPermissionGranted}, Found {mics.Count} microphones");
+                
+            if (micPermissionGranted)
+            {
+                // If we got devices with real names, permission is granted
+                availableMicrophones = mics;
+                
+                // Select default or first microphone
+                if (availableMicrophones.Count > 0)
+                {
+                    var defaultMic = availableMicrophones.FirstOrDefault(m => m.IsDefault);
+                    selectedMicrophoneId = defaultMic?.Id ?? availableMicrophones[0].Id;
+                    await rta.SetMicrophoneDevice(selectedMicrophoneId);
+                    
+                    Console.WriteLine($"Initially selected microphone: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
+                }
+            }
+            else if (mics.Count > 0)
+            {
+                // We have devices but without proper labels - this suggests permission is needed
+                // but we still store them for when permission is granted
+                availableMicrophones = mics;
+                Console.WriteLine("Microphones found but without proper labels - permission needed");
+            }
+            else
+            {
+                Console.WriteLine("No microphones found or permission not granted");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking microphone permission: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            micPermissionGranted = false;
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task RequestMicrophonePermission()
+    {
+        try
+        {
+            isLoadingMicrophones = true;
+            await InvokeAsync(StateHasChanged);
+
+            Console.WriteLine("Explicitly requesting microphone permission...");
+            
+            // Attempt to get microphones - this will trigger permission request if needed
+            availableMicrophones = await rta.GetAvailableMicrophones();
+            
+            // Small delay to ensure browser has completed loading devices
+            await Task.Delay(500);
+            
+            // Try one more time to get the latest device list with labels
+            availableMicrophones = await rta.GetAvailableMicrophones();
+            
+            // Check if we now have devices with real names (not placeholders)
+            micPermissionGranted = availableMicrophones.Count > 0 && 
+                availableMicrophones.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
+            
+            Console.WriteLine($"After permission request: Permission granted: {micPermissionGranted}, Found {availableMicrophones.Count} microphones");
+            
+            // If we have microphones with permission, select one
+            if (micPermissionGranted && availableMicrophones.Count > 0)
+            {
+                // Try to find default microphone
+                var defaultMic = availableMicrophones.FirstOrDefault(m => m.IsDefault);
+                if (defaultMic != null)
+                {
+                    selectedMicrophoneId = defaultMic.Id;
+                }
+                else if (availableMicrophones.Count > 0)
+                {
+                    // Otherwise use the first microphone
+                    selectedMicrophoneId = availableMicrophones[0].Id;
+                }
+
+                // Set the selected device
+                if (!string.IsNullOrEmpty(selectedMicrophoneId))
+                {
+                    await rta.SetMicrophoneDevice(selectedMicrophoneId);
+                    var selectedMic = availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId);
+                    Console.WriteLine($"Selected microphone: {selectedMic?.Name ?? "Unknown"}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("Permission not granted or no microphones with labels found");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error requesting microphone permission: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
+        finally
+        {
+            isLoadingMicrophones = false;
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     // Convert between string and enum
@@ -286,6 +486,15 @@
                 rta.CurrentVoice = voiceEnum;
             }
         }
+    }
+
+    private void OnMicrophoneDevicesChanged(object? sender, List<AudioDeviceInfo> devices)
+    {
+        InvokeAsync(async () => 
+        {
+            availableMicrophones = devices;
+            await InvokeAsync(StateHasChanged);
+        });
     }
 
     private void OnConnectionStatusChanged(object? sender, string status)
@@ -316,31 +525,62 @@
 
     private async Task StartSession()
     {
-        // Get current settings or create new settings
-        var settings = rta.Settings.Clone();
-        
-        // Clear any previously registered tools
-        settings.RegisteredTools.Clear();
-        settings.Tools.Clear();
-        
-        // Add TimeTool if enabled
-        if (useTimeTool)
+        try
         {
-            var timeTool = new TimeTool();
-            settings.RegisteredTools.Add(timeTool);
-            settings.Tools.Add(timeTool.GetToolDefinition());
+            // Store the currently selected device before starting the session
+            string deviceToUse = selectedMicrophoneId;
+            string deviceName = availableMicrophones.FirstOrDefault(m => m.Id == deviceToUse)?.Name ?? "default device";
+            
+            // Apply the selected microphone if it has a value
+            if (!string.IsNullOrEmpty(deviceToUse))
+            {
+                await rta.SetMicrophoneDevice(deviceToUse);
+                Console.WriteLine($"Using microphone: {deviceName} for recording session");
+            }
+
+            // Get current settings or create new settings
+            var settings = rta.Settings;
+
+            // Add TimeTool if enabled
+            if (useTimeTool)
+            {
+                settings.Tools = [new TimeTool()];
+            }
+            
+            // Start the session with the configured settings
+            await rta.Start(settings);
+            
+            // Even if permission state is lost in the process, we still know we have a valid device
+            if (!micPermissionGranted && availableMicrophones.Count > 0)
+            {
+                micPermissionGranted = true;
+            }
+            
+            await InvokeAsync(StateHasChanged);
         }
-        
-        // Start the session with the configured settings
-        await rta.Start(settings);
-        
-        await InvokeAsync(StateHasChanged);
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error starting session: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
     }
 
     private async Task StopSession()
     {
-        await rta.Stop();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await rta.Stop();
+            
+            // Ensure mic permission state is preserved after stopping
+            RaisePropertyChanged();
+            
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error stopping session: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
     }
 
     private async Task InterruptSpeech()
@@ -357,8 +597,34 @@
 
     private async Task TestMicrophone()
     {
-        await rta.TestMicrophone();
-        await InvokeAsync(StateHasChanged);
+        try
+        {
+            // Store the currently selected device before testing
+            string deviceToUse = selectedMicrophoneId;
+            string deviceName = availableMicrophones.FirstOrDefault(m => m.Id == deviceToUse)?.Name ?? "default device";
+            
+            // Apply the selected microphone if it has a value
+            if (!string.IsNullOrEmpty(deviceToUse))
+            {
+                await rta.SetMicrophoneDevice(deviceToUse);
+                Console.WriteLine($"Testing microphone: {deviceName}");
+            }
+            
+            await rta.TestMicrophone();
+            
+            // Even if permission state is lost in the process, we still know we have a valid device
+            if (!micPermissionGranted && availableMicrophones.Count > 0)
+            {
+                micPermissionGranted = true;
+            }
+            
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error testing microphone: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+        }
     }
 
     private void OnMicrophoneTestStatusChanged(object? sender, string status)
@@ -378,6 +644,8 @@
         rta.ConnectionStatusChanged -= OnConnectionStatusChanged;
         rta.MessageAdded -= OnMessageAdded;
         rta.MicrophoneTestStatusChanged -= OnMicrophoneTestStatusChanged;
+        rta.MicrophoneDevicesChanged -= OnMicrophoneDevicesChanged;
+        PropertyChanged -= OnPropertyChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

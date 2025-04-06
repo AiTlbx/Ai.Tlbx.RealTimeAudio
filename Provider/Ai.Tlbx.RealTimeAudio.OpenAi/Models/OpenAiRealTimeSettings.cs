@@ -50,14 +50,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         /// <summary>
         /// List of tools the assistant can use.
         /// </summary>
-        public List<OpenAiToolDefinition> Tools { get; set; } = new List<OpenAiToolDefinition>();
-        
-        /// <summary>
-        /// List of tool implementation objects for registered tools.
-        /// This property is used to maintain references to the actual tool implementation objects.
-        /// </summary>
-        public List<BaseTool> RegisteredTools { get; set; } = new List<BaseTool>();
-        
+        public List<RealTimeTool> Tools { get; set; } = new List<RealTimeTool>();
+
         /// <summary>
         /// Creates a default settings object
         /// </summary>
@@ -109,46 +103,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
             settings.TurnDetection.Type = TurnDetectionType.SemanticVad;
             settings.TurnDetection.Eagerness = VadEagerness.Low;
             return settings;
-        }
-        
-        /// <summary>
-        /// Creates a copy of the settings
-        /// </summary>
-        public OpenAiRealTimeSettings Clone()
-        {
-            // Create new settings object
-            var clone = new OpenAiRealTimeSettings
-            {
-                Voice = this.Voice,
-                InputAudioFormat = this.InputAudioFormat,
-                OutputAudioFormat = this.OutputAudioFormat,
-                Instructions = this.Instructions,
-                Tools = this.Tools.Select(t => t).ToList(),
-                RegisteredTools = this.RegisteredTools.ToList()
-            };
-            
-            // Clone the turn detection settings
-            clone.TurnDetection = new TurnDetectionSettings
-            {
-                Type = this.TurnDetection.Type,
-                Eagerness = this.TurnDetection.Eagerness,
-                CreateResponse = this.TurnDetection.CreateResponse,
-                InterruptResponse = this.TurnDetection.InterruptResponse,
-                Threshold = this.TurnDetection.Threshold,
-                PrefixPaddingMs = this.TurnDetection.PrefixPaddingMs,
-                SilenceDurationMs = this.TurnDetection.SilenceDurationMs
-            };
-            
-            // Clone the transcription settings
-            clone.Transcription = new TranscriptionSettings
-            {
-                Model = this.Transcription.Model
-            };
-            
-            // Clone the modalities list
-            clone.Modalities = new List<string>(this.Modalities);
-            
-            return clone;
         }
         
         /// <summary>

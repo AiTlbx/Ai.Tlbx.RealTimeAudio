@@ -10,9 +10,5 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.0" />
     <ProjectReference Include="..\..\Provider\Ai.Tlbx.RealTimeAudio.OpenAi\Ai.Tlbx.RealTimeAudio.OpenAi.csproj" />
-    
   </ItemGroup>
-
-
-
 </Project>

@@ -4,6 +4,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
 using NAudio.Wave;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
 {
@@ -19,6 +21,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         private BufferedWaveProvider _bufferedWaveProvider;
         private MicrophoneAudioReceivedEventHandler _audioDataReceivedHandler;
         private bool _isInitialized = false;
+        private int _selectedDeviceNumber = 0; // Default to first device
 
         public event EventHandler<string> AudioError;
 
@@ -97,13 +100,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"  Sample rate: {_sampleRate}");
                 Debug.WriteLine($"  Channel count: {_channelCount}");
                 Debug.WriteLine($"  Bits per sample: {_bitsPerSample}");
+                Debug.WriteLine($"  Device number: {_selectedDeviceNumber}");
 
                 _audioDataReceivedHandler = audioDataReceivedHandler;
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 _waveIn = new WaveInEvent
                 {
-                    DeviceNumber = 0,
+                    DeviceNumber = _selectedDeviceNumber,
                     WaveFormat = new WaveFormat(_sampleRate, _bitsPerSample, _channelCount),
                     BufferMilliseconds = 50
                 };
@@ -235,6 +239,88 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
+        }
+
+        public async Task<List<AudioDeviceInfo>> GetAvailableMicrophones()
+        {
+            var result = new List<AudioDeviceInfo>();
+
+            try
+            {
+                if (!_isInitialized)
+                {
+                    await InitAudio();
+                }
+
+                int deviceCount = WaveInEvent.DeviceCount;
+                Debug.WriteLine($"Getting available microphones. Found {deviceCount} devices.");
+
+                for (int i = 0; i < deviceCount; i++)
+                {
+                    var capabilities = WaveInEvent.GetCapabilities(i);
+                    result.Add(new AudioDeviceInfo
+                    {
+                        Id = i.ToString(),
+                        Name = capabilities.ProductName,
+                        IsDefault = i == 0 // Assume first device is default
+                    });
+                    Debug.WriteLine($"Device {i}: {capabilities.ProductName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                string error = $"Error getting available microphones: {ex.Message}";
+                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                AudioError?.Invoke(this, error);
+            }
+
+            return result;
+        }
+
+        public async Task<bool> SetMicrophoneDevice(string deviceId)
+        {
+            try
+            {
+                if (!_isInitialized)
+                {
+                    await InitAudio();
+                }
+
+                if (int.TryParse(deviceId, out int deviceNumber))
+                {
+                    if (deviceNumber >= 0 && deviceNumber < WaveInEvent.DeviceCount)
+                    {
+                        _selectedDeviceNumber = deviceNumber;
+                        Debug.WriteLine($"Microphone device set to: {deviceNumber}");
+                        return true;
+                    }
+                    else
+                    {
+                        string error = $"Invalid device number: {deviceNumber}. Must be between 0 and {WaveInEvent.DeviceCount - 1}";
+                        Debug.WriteLine(error);
+                        AudioError?.Invoke(this, error);
+                    }
+                }
+                else
+                {
+                    string error = $"Invalid device ID format: {deviceId}. Must be a number.";
+                    Debug.WriteLine(error);
+                    AudioError?.Invoke(this, error);
+                }
+            }
+            catch (Exception ex)
+            {
+                string error = $"Error setting microphone device: {ex.Message}";
+                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                AudioError?.Invoke(this, error);
+            }
+
+            return false;
+        }
+
+        public async Task<string?> GetCurrentMicrophoneDevice()
+        {
+            return _selectedDeviceNumber.ToString();
         }
 
         public async ValueTask DisposeAsync()

@@ -152,7 +152,118 @@ async function ensureAudioContextResumed() {
     return true;
 }
 
-async function startRecording(dotNetObj, intervalMs = 500) {
+// New function to get available microphones
+async function getAvailableMicrophones() {
+    try {
+        console.log("Getting available microphone devices");
+        
+        // Check if permission is already granted by the browser
+        let permissionStatus = null;
+        try {
+            permissionStatus = await navigator.permissions.query({ name: 'microphone' });
+            console.log("Microphone permission status:", permissionStatus.state);
+        } catch (err) {
+            console.log("Permission API not supported, will try direct method", err);
+        }
+        
+        // If permission is already granted according to Permissions API, we can skip the permission request
+        const isPermissionGranted = permissionStatus?.state === 'granted';
+        
+        // Get initial device list
+        let devices = await navigator.mediaDevices.enumerateDevices();
+        
+        // Check if we already have labeled devices (this happens when permission is already granted)
+        let hasLabels = devices.some(device => device.kind === 'audioinput' && device.label);
+        
+        // If we don't have labels but permission is supposedly granted, or we need to request permission
+        if (!hasLabels) {
+            console.log("No device labels available, requesting microphone access");
+            try {
+                // Request microphone access explicitly
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                
+                // Now we should have permission, get the devices again with labels
+                devices = await navigator.mediaDevices.enumerateDevices();
+                
+                // Stop the stream immediately as we only needed it for permissions
+                stream.getTracks().forEach(track => track.stop());
+                console.log("Microphone access granted, device labels should be available now");
+            } catch (permissionErr) {
+                console.warn("Could not get microphone access:", permissionErr);
+                // Continue anyway, but device labels will likely be empty
+            }
+        } else {
+            console.log("Device labels already available, permission already granted");
+        }
+        
+        // Find the default device
+        const defaultDevice = devices.find(device => device.kind === 'audioinput' && 
+            (device.deviceId === 'default' || device.deviceId === ''));
+        let defaultLabel = defaultDevice?.label || '';
+        
+        // Filter for audio input devices
+        let inputDevices = devices.filter(device => 
+            device.kind === 'audioinput' && 
+            device.deviceId !== 'default' && 
+            device.deviceId !== '');
+        
+        // Create a map of labels to avoid duplicates
+        const deviceMap = new Map();
+        
+        // Process non-default devices
+        inputDevices.forEach((device, index) => {
+            // Use label if available, otherwise fallback to a numbered placeholder
+            let name = device.label || `Microphone ${index + 1}`;
+            
+            if (deviceMap.has(name)) {
+                // This is a duplicate label, append a number
+                let count = 2;
+                let newName = `${name} (${count})`;
+                
+                // Keep incrementing the number until we find a unique name
+                while (deviceMap.has(newName)) {
+                    count++;
+                    newName = `${name} (${count})`;
+                }
+                name = newName;
+            }
+            
+            deviceMap.set(name, {
+                id: device.deviceId,
+                name: name,
+                isDefault: false
+            });
+        });
+        
+        // Create the final list of devices
+        let microphones = Array.from(deviceMap.values());
+        
+        // Add the default device at the beginning if it exists and has a label
+        if (defaultDevice && defaultDevice.label) {
+            // Try to find what actual device is the default
+            const actualDeviceLabel = inputDevices.find(d => 
+                d.label && defaultLabel.includes(d.label))?.label || defaultLabel;
+            
+            // Only add if it has a real label
+            if (actualDeviceLabel) {
+                microphones.unshift({
+                    id: defaultDevice.deviceId || 'default',
+                    name: `Default - ${actualDeviceLabel}`,
+                    isDefault: true
+                });
+            }
+        }
+        
+        console.log(`Found ${microphones.length} microphone devices with labels:`, microphones);
+        return microphones;
+    } catch (error) {
+        console.error("Error getting available microphones:", error);
+        dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to get microphone list: ${error.message}`);
+        return [];
+    }
+}
+
+async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
     try {
         console.log("Starting recording process");
         
@@ -184,8 +295,8 @@ async function startRecording(dotNetObj, intervalMs = 500) {
         
         console.log("Requesting microphone access");
         try {
-            // Get microphone stream with specific parameters for OpenAI
-            mediaStream = await navigator.mediaDevices.getUserMedia({
+            // Create constraints for getUserMedia
+            const constraints = {
                 audio: {
                     channelCount: 1,
                     sampleRate: 24000, // Match OpenAI requirement
@@ -194,7 +305,18 @@ async function startRecording(dotNetObj, intervalMs = 500) {
                     autoGainControl: true
                 },
                 video: false
-            });
+            };
+            
+            // If deviceId was provided, add it to the constraints
+            if (deviceId) {
+                console.log(`Using specific device ID: ${deviceId}`);
+                constraints.audio.deviceId = { exact: deviceId };
+            } else {
+                console.log("No device ID specified, using default microphone");
+            }
+            
+            // Get microphone stream with specific parameters
+            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
         } catch (err) {
             console.error("Microphone access error:", err);
             
@@ -203,6 +325,8 @@ async function startRecording(dotNetObj, intervalMs = 500) {
                 dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Please allow microphone access in your browser settings and reload the page.');
             } else if (err.name === 'NotFoundError') {
                 dotNetReference?.invokeMethodAsync('OnAudioError', 'No microphone detected. Please connect a microphone and reload the page.');
+            } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
+                dotNetReference?.invokeMethodAsync('OnAudioError', `The selected microphone is not available. Please choose a different microphone.`);
             } else {
                 dotNetReference?.invokeMethodAsync('OnAudioError', `Microphone access error: ${err.message}`);
             }
@@ -518,5 +642,6 @@ export {
     startRecording,
     stopRecording,
     playAudio,
-    stopAudioPlayback
+    stopAudioPlayback,
+    getAvailableMicrophones
 }

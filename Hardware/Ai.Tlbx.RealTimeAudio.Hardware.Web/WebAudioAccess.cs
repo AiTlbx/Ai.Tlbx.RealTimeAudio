@@ -21,6 +21,9 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         
         // Store a reference to the DotNetObjectReference to prevent it from being garbage collected
         private DotNetObjectReference<WebAudioAccess>? _dotNetReference;
+
+        // Store the selected microphone device id
+        private string? _selectedMicrophoneId = null;
         
         // Event for audio errors
         public event EventHandler<string>? AudioError;
@@ -255,11 +258,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                     _dotNetReference = DotNetObjectReference.Create(this);
                 }
                 
-                // Start recording in JavaScript
+                // Start recording in JavaScript with the selected device if available
                 try
                 {
                     Console.WriteLine("[WebAudioAccess] Starting recording with JS using dotNetReference");
-                    var result = await _audioModule.InvokeAsync<bool>("startRecording", _dotNetReference, 500); // 500ms upload interval
+                    Console.WriteLine($"[WebAudioAccess] Using device ID: {_selectedMicrophoneId ?? "default"}");
+                    var result = await _audioModule.InvokeAsync<bool>("startRecording", _dotNetReference, 500, _selectedMicrophoneId); // 500ms upload interval, selected device ID
                     
                     if (result)
                     {
@@ -358,24 +362,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         {
             _isRecording = false;
             
-            // Dispose the DotNetObjectReference to prevent memory leaks
-            if (_dotNetReference != null)
-            {
-                try
-                {
-                    _dotNetReference.Dispose();
-                    Console.WriteLine("[WebAudioAccess] Disposed DotNetObjectReference");
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[WebAudioAccess] Error disposing DotNetObjectReference: {ex.Message}");
-                }
-                finally
-                {
-                    _dotNetReference = null;
-                }
-            }
-            
+            // Don't dispose the DotNetObjectReference here, as we might use it again
             _audioDataReceivedHandler = null;
         }
 
@@ -423,6 +410,71 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
         }
 
+        public async Task<List<AudioDeviceInfo>> GetAvailableMicrophones()
+        {
+            if (_audioModule == null)
+            {
+                await InitAudio();
+            }
+
+            if (_audioModule == null)
+            {
+                Console.WriteLine("[WebAudioAccess] Cannot get available microphones: audio module is null");
+                return new List<AudioDeviceInfo>();
+            }
+
+            try
+            {
+                var devices = await _audioModule.InvokeAsync<List<AudioDeviceInfo>>("getAvailableMicrophones");
+                Console.WriteLine($"[WebAudioAccess] Found {devices.Count} microphone devices");
+                return devices;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WebAudioAccess] Error getting available microphones: {ex.Message}");
+                await OnAudioError($"Failed to get microphone list: {ex.Message}");
+                return new List<AudioDeviceInfo>();
+            }
+        }
+
+        public async Task<bool> SetMicrophoneDevice(string deviceId)
+        {
+            if (string.IsNullOrEmpty(deviceId))
+            {
+                Console.WriteLine("[WebAudioAccess] Cannot set microphone device: deviceId is null or empty");
+                return false;
+            }
+
+            if (_audioModule == null)
+            {
+                await InitAudio();
+            }
+
+            if (_audioModule == null)
+            {
+                Console.WriteLine("[WebAudioAccess] Cannot set microphone device: audio module is null");
+                return false;
+            }
+
+            try
+            {
+                _selectedMicrophoneId = deviceId;
+                Console.WriteLine($"[WebAudioAccess] Microphone device set to: {deviceId}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WebAudioAccess] Error setting microphone device: {ex.Message}");
+                await OnAudioError($"Failed to set microphone device: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<string?> GetCurrentMicrophoneDevice()
+        {
+            return _selectedMicrophoneId;
+        }
+
         async ValueTask IAsyncDisposable.DisposeAsync()
         {
             // Make sure recording is stopped
@@ -441,6 +493,23 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 catch (Exception)
                 {
                     // Handle silently
+                }
+            }
+
+            // Dispose the .NET reference
+            if (_dotNetReference != null)
+            {
+                try
+                {
+                    _dotNetReference.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[WebAudioAccess] Error disposing DotNetObjectReference: {ex.Message}");
+                }
+                finally
+                {
+                    _dotNetReference = null;
                 }
             }
 

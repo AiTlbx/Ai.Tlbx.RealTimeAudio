@@ -7,13 +7,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
     /// <summary>
     /// A built-in tool for retrieving the current date and time.
     /// </summary>
-    public class TimeTool : BaseTool
+    public class TimeTool : RealTimeTool
     {
         public override string Name => "get_current_time";
 
-        public override string Description => "Gets the current UTC date and time.";
+        public override string Description => "Gets the current UTC date and time. When the AI can't get the current time.";
 
-        // No parameters needed for this tool, so we use the base class default (empty object schema).
+        public override bool? Strict => false;
 
         /// <summary>
         /// Executes the tool to get the current time.

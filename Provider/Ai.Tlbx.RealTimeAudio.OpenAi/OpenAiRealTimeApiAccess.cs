@@ -7,26 +7,11 @@ using System.Reflection;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using System.Collections.Concurrent;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Tools;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Helper;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi
 {
-    /// <summary>
-    /// Event arguments for when OpenAI requests a tool call.
-    /// </summary>
-    public class ToolCallEventArgs : EventArgs
-    {
-        public string ToolCallId { get; } // Unique ID for this specific call
-        public string FunctionName { get; } // Name of the function/tool requested
-        public string ArgumentsJson { get; } // Arguments as a JSON string
-
-        public ToolCallEventArgs(string toolCallId, string functionName, string argumentsJson)
-        {
-            ToolCallId = toolCallId;
-            FunctionName = functionName;
-            ArgumentsJson = argumentsJson;
-        }
-    }
-
+   
     public class OpenAiRealTimeApiAccess : IAsyncDisposable
     {
         private const string REALTIME_WEBSOCKET_ENDPOINT = "wss://api.openai.com/v1/realtime";
@@ -72,6 +57,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         public event EventHandler<string>? MicrophoneTestStatusChanged;
         public event EventHandler<(string ToolName, string Result)>? ToolResultAvailable;
         public event EventHandler<ToolCallEventArgs>? ToolCallRequested;
+        public event EventHandler<List<AudioDeviceInfo>>? MicrophoneDevicesChanged;
 
         // Public readonly properties to expose internal state
         public bool IsInitialized => _isInitialized;
@@ -214,18 +200,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         }
 
         /// <summary>
-        /// For backward compatibility - starts the session with just turn detection settings
-        /// </summary>
-        public async Task Start(TurnDetectionSettings? turnDetectionSettings)
-        {
-            if (turnDetectionSettings != null)
-            {
-                _settings.TurnDetection = turnDetectionSettings;
-            }
-            await Start();
-        }
-
-        /// <summary>
         /// Stops everything - clears audio queue, stops recording, and closes the connection
         /// </summary>
         public async Task Stop()
@@ -299,36 +273,36 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     toolsConfig = new List<object>();
                     foreach (var toolDef in _settings.Tools)
                     {
-                        if (toolDef?.Function?.Name == null) continue;
+                        if (toolDef?.Name == null) continue;
                         
                         // Create a tool object with the correct format according to OpenAI docs
                         toolsConfig.Add(new 
                         {
                             type = "function",
-                            name = toolDef.Function.Name,
-                            description = toolDef.Function.Description,
-                            parameters = toolDef.Function.Parameters
+                            name = toolDef.Name,
+                            description = toolDef.Description,
+                            parameters = toolDef.Parameters
                         });
                     }
                 }
 
-                // Send the current serialized JSON to the debug log to help diagnose issues
-                var debugOptions = new JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
-                string debugTools = JsonSerializer.Serialize(toolsConfig, debugOptions);
-                System.Diagnostics.Debug.WriteLine($"[ConfigureSession] Tool definitions: {debugTools}");
-
                 // Construct the session object more explicitly
                 var sessionPayload = new {
-                    model = "gpt-4o-realtime-preview-2024-12-17", 
+                    model = "gpt-4o-realtime-preview-2024-12-17",
                     voice = _settings.GetVoiceString(),
                     modalities = _settings.Modalities.ToArray(),
+                    temperature = 0.8,
+                    tool_choice = "auto",
                     input_audio_format = _settings.GetAudioFormatString(_settings.InputAudioFormat),
+                    //input_audio_noise_reduction = "near_field", // other option is "far_field"
                     output_audio_format = _settings.GetAudioFormatString(_settings.OutputAudioFormat),
-                    input_audio_transcription = new { model = _settings.GetTranscriptionModelString() },
+                    input_audio_transcription = new { model = "gpt-4o-transcribe" },
                     instructions = _settings.Instructions,
                     turn_detection = turnDetectionConfig, 
                     tools = toolsConfig 
                 };
+
+                Debug.WriteLine("Session config: \n" + sessionPayload.ToJson());
 
                 var sessionConfigMessage = new
                 {
@@ -1569,42 +1543,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// <param name="functionName">The name of the function if available</param>
         /// <param name="argumentsJson">The JSON string containing the arguments</param>
         /// <returns>The matching tool or null if not found</returns>
-        private BaseTool? FindToolForArguments(string functionName, string argumentsJson)
-        {
-            // First try to find by name if available
-            if (!string.IsNullOrEmpty(functionName))
-            {
-                var tool = _settings.RegisteredTools.FirstOrDefault(t => t.Name == functionName);
-                if (tool != null)
-                {
-                    return tool;
-                }
-            }
-
-            // If no name or not found by name, try to determine from arguments
-            // This is a fallback mechanism in case the name isn't provided
-            try
-            {
-                using var doc = JsonDocument.Parse(argumentsJson);
-                // Here you could check for specific properties in the arguments
-                // that might indicate which tool to use
-                
-                // This approach is very implementation-specific and may not be reliable
-                // Future versions might enhance this with more sophisticated matching
-                
-                // For now, if we have only one registered tool, assume it's the one we want
-                if (_settings.RegisteredTools.Count == 1)
-                {
-                    return _settings.RegisteredTools[0];
-                }
-            }
-            catch (JsonException)
-            {
-                // If we can't parse the arguments, we can't determine the tool
-            }
-            
-            // No matching tool found
-            return null;
+        private RealTimeTool? FindToolForArguments(string functionName, string argumentsJson)
+        {        
+            return _settings.Tools.FirstOrDefault(t => t.Name == functionName);            
         }
 
         /// <summary>
@@ -1612,7 +1553,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// </summary>
         /// <param name="callId">The ID of the function call to respond to.</param>
         /// <param name="result">The result of the function execution.</param>
-        public async Task SendToolResultAsync(string callId, string result)
+        public async Task SendToolResultAsync(string callId, object result)
         {
             if (_webSocket?.State != WebSocketState.Open)
             {
@@ -1639,48 +1580,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 }
             };
 
-            Debug.WriteLine($"[WebSocket] Sending function result for call ID: {callId}, Result: {result.Substring(0, Math.Min(100, result.Length))}...");
+            Debug.WriteLine($"[WebSocket] Sending function result for call ID: {callId}, Result: {result.ToJson()}");
             await SendAsync(functionResultMessage);
-        }
-
-        /// <summary>
-        /// Adds a tool to the current settings.
-        /// </summary>
-        /// <param name="tool">The tool to add.</param>
-        public void AddTool(BaseTool tool)
-        {
-            if (tool == null)
-                throw new ArgumentNullException(nameof(tool));
-
-            // Add to RegisteredTools list if not already present
-            if (!_settings.RegisteredTools.Any(t => t.Name == tool.Name))
-            {
-                _settings.RegisteredTools.Add(tool);
-                
-                // Also add the tool definition to the Tools list
-                var toolDefinition = tool.GetToolDefinition();
-                if (!_settings.Tools.Any(t => t.Function.Name == toolDefinition.Function.Name))
-                {
-                    _settings.Tools.Add(toolDefinition);
-                }
-                
-                Debug.WriteLine($"[Tooling] Added tool to settings: {tool.Name}");
-            }
-        }
-        
-        /// <summary>
-        /// Adds multiple tools to the current settings.
-        /// </summary>
-        /// <param name="tools">The collection of tools to add.</param>
-        public void AddTools(IEnumerable<BaseTool> tools)
-        {
-            if (tools == null)
-                throw new ArgumentNullException(nameof(tools));
-                
-            foreach (var tool in tools)
-            {
-                AddTool(tool);
-            }
         }
 
         /// <summary>
@@ -1736,6 +1637,98 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             {
                 Debug.WriteLine($"[Tooling] Error handling tool result: {ex.Message}");
                 RaiseStatus($"Error handling tool result: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Get a list of available microphone devices
+        /// </summary>
+        /// <returns>A list of available microphone devices</returns>
+        public async Task<List<AudioDeviceInfo>> GetAvailableMicrophones()
+        {
+            try
+            {
+                // Initialize audio if not already initialized
+                if (!_isInitialized)
+                {
+                    await _hardwareAccess.InitAudio();
+                }
+
+                // Get available microphones from hardware
+                var microphones = await _hardwareAccess.GetAvailableMicrophones();
+                
+                // Raise event to notify subscribers
+                MicrophoneDevicesChanged?.Invoke(this, microphones);
+                
+                return microphones;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OpenAiRealTimeApiAccess] Error getting microphones: {ex.Message}");
+                _lastErrorMessage = $"Error getting microphones: {ex.Message}";
+                return new List<AudioDeviceInfo>();
+            }
+        }
+
+        /// <summary>
+        /// Set the microphone device to use for recording
+        /// </summary>
+        /// <param name="deviceId">The ID of the microphone device to use</param>
+        /// <returns>True if successful, false otherwise</returns>
+        public async Task<bool> SetMicrophoneDevice(string deviceId)
+        {
+            try
+            {
+                // Don't allow changing while recording
+                if (_isRecording)
+                {
+                    Debug.WriteLine("[OpenAiRealTimeApiAccess] Cannot change microphone while recording");
+                    return false;
+                }
+
+                // Initialize audio if not already initialized
+                if (!_isInitialized)
+                {
+                    await _hardwareAccess.InitAudio();
+                }
+
+                // Set the microphone device
+                bool success = await _hardwareAccess.SetMicrophoneDevice(deviceId);
+                if (success)
+                {
+                    RaiseStatus($"Microphone device set successfully");
+                }
+                else
+                {
+                    _lastErrorMessage = "Failed to set microphone device";
+                    RaiseStatus(_lastErrorMessage);
+                }
+                
+                return success;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OpenAiRealTimeApiAccess] Error setting microphone: {ex.Message}");
+                _lastErrorMessage = $"Error setting microphone: {ex.Message}";
+                RaiseStatus(_lastErrorMessage);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Get the currently selected microphone device
+        /// </summary>
+        /// <returns>The ID of the currently selected microphone device, or null if none is selected</returns>
+        public async Task<string?> GetCurrentMicrophoneDevice()
+        {
+            try
+            {
+                return await _hardwareAccess.GetCurrentMicrophoneDevice();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[OpenAiRealTimeApiAccess] Error getting current microphone: {ex.Message}");
+                return null;
             }
         }
     }    

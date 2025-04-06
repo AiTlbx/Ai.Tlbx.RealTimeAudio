@@ -1,5 +1,9 @@
 namespace Ai.Tlbx.RealTimeAudio.OpenAi;
 
+/// <summary>
+/// Represents a chat message in the OpenAI conversation format.
+/// Provides standard message types and factory methods for tool-related messages.
+/// </summary>
 public class OpenAiChatMessage
 {
     // Constants for Roles
@@ -9,25 +13,57 @@ public class OpenAiChatMessage
     public const string ToolResultRole = "tool_result";
 
     // Core Properties
-    public string Content { get; private set; } // Allow setting content in factories
+    /// <summary>
+    /// The content of the message.
+    /// </summary>
+    public string Content { get; private set; }
+    
+    /// <summary>
+    /// The role of the message sender (user, assistant, tool_call, tool_result).
+    /// </summary>
     public string Role { get; private set; }
+    
+    /// <summary>
+    /// Timestamp when the message was created.
+    /// </summary>
     public DateTime Timestamp { get; }
 
     // Tool-related Properties (nullable)
+    /// <summary>
+    /// Unique identifier for tool calls, used to match calls with their results.
+    /// </summary>
     public string? ToolCallId { get; private set; }
+    
+    /// <summary>
+    /// Name of the tool being called or that produced the result.
+    /// </summary>
     public string? ToolName { get; private set; }
+    
+    /// <summary>
+    /// JSON-formatted arguments for the tool call.
+    /// </summary>
     public string? ToolArgumentsJson { get; private set; }
-    public string? ToolResultJson { get; private set; } // Only for ToolResultRole
+    
+    /// <summary>
+    /// JSON-formatted result from the tool execution.
+    /// Only populated for messages with ToolResultRole.
+    /// </summary>
+    public string? ToolResultJson { get; private set; }
 
     // Private constructor to control instantiation via factory methods
     private OpenAiChatMessage(string role)
     {
         Role = role;
         Timestamp = DateTime.Now;
-        Content = string.Empty; // Initialize Content
+        Content = string.Empty;
     }
 
-    // Constructor for User/Assistant messages (public)
+    /// <summary>
+    /// Creates a standard user or assistant message.
+    /// </summary>
+    /// <param name="content">The message content.</param>
+    /// <param name="role">The role of the message sender (must be UserRole or AssistantRole).</param>
+    /// <exception cref="ArgumentException">Thrown when an invalid role is provided.</exception>
     public OpenAiChatMessage(string content, string role)
     {
         if (role != UserRole && role != AssistantRole)
@@ -39,28 +75,40 @@ public class OpenAiChatMessage
         Timestamp = DateTime.Now;
     }
     
-    // Static factory method for creating Tool Call messages
+    /// <summary>
+    /// Creates a tool call message representing an AI's request to use a specific tool.
+    /// </summary>
+    /// <param name="toolCallId">Unique identifier for the tool call.</param>
+    /// <param name="toolName">Name of the tool to be called.</param>
+    /// <param name="argumentsJson">JSON-formatted arguments for the tool.</param>
+    /// <returns>A new OpenAiChatMessage with ToolCallRole.</returns>
     public static OpenAiChatMessage CreateToolCallMessage(string toolCallId, string toolName, string argumentsJson)
     {
-        var message = new OpenAiChatMessage(ToolCallRole) // Use private constructor
+        var message = new OpenAiChatMessage(ToolCallRole)
         {
             ToolCallId = toolCallId,
             ToolName = toolName,
             ToolArgumentsJson = argumentsJson,
-            Content = $"AI requested tool: {toolName}" // Default content
+            Content = $"AI requested tool: {toolName}"
         };
         return message;
     }
     
-    // Static factory method for creating Tool Result messages
+    /// <summary>
+    /// Creates a tool result message representing the outcome of a tool execution.
+    /// </summary>
+    /// <param name="toolCallId">Identifier matching the original tool call.</param>
+    /// <param name="toolName">Name of the tool that produced the result.</param>
+    /// <param name="resultJson">JSON-formatted result from the tool execution.</param>
+    /// <returns>A new OpenAiChatMessage with ToolResultRole.</returns>
     public static OpenAiChatMessage CreateToolResultMessage(string toolCallId, string toolName, string resultJson)
     {
-        var message = new OpenAiChatMessage(ToolResultRole) // Use private constructor
+        var message = new OpenAiChatMessage(ToolResultRole)
         {
             ToolCallId = toolCallId,
             ToolName = toolName,
             ToolResultJson = resultJson,
-            Content = $"Tool result for: {toolName}" // Default content
+            Content = $"Tool result for: {toolName}"
         };
         return message;
     }
