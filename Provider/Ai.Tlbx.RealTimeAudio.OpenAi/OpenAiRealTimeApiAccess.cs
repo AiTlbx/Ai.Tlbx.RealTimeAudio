@@ -11,7 +11,6 @@ using Ai.Tlbx.RealTimeAudio.OpenAi.Helper;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi
 {
-   
     public class OpenAiRealTimeApiAccess : IAsyncDisposable
     {
         private const string REALTIME_WEBSOCKET_ENDPOINT = "wss://api.openai.com/v1/realtime";
@@ -1188,12 +1187,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             {
                 Debug.WriteLine($"Error during disposal: {ex.Message}");
             }
-        }
-
-        public void Dispose()
-        {
-            // Use ConfigureAwait(false) to prevent deadlocks
-            Cleanup().ConfigureAwait(false).GetAwaiter().GetResult();
         }
 
         private void RaiseStatus(string status)

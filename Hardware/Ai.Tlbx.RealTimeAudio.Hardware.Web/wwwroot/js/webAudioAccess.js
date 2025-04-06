@@ -166,16 +166,13 @@ async function getAvailableMicrophones() {
             console.log("Permission API not supported, will try direct method", err);
         }
         
-        // If permission is already granted according to Permissions API, we can skip the permission request
-        const isPermissionGranted = permissionStatus?.state === 'granted';
-        
         // Get initial device list
         let devices = await navigator.mediaDevices.enumerateDevices();
         
         // Check if we already have labeled devices (this happens when permission is already granted)
         let hasLabels = devices.some(device => device.kind === 'audioinput' && device.label);
         
-        // If we don't have labels but permission is supposedly granted, or we need to request permission
+        // If we don't have labels, request permission
         if (!hasLabels) {
             console.log("No device labels available, requesting microphone access");
             try {
@@ -196,65 +193,80 @@ async function getAvailableMicrophones() {
             console.log("Device labels already available, permission already granted");
         }
         
-        // Find the default device
-        const defaultDevice = devices.find(device => device.kind === 'audioinput' && 
-            (device.deviceId === 'default' || device.deviceId === ''));
-        let defaultLabel = defaultDevice?.label || '';
-        
         // Filter for audio input devices
-        let inputDevices = devices.filter(device => 
-            device.kind === 'audioinput' && 
-            device.deviceId !== 'default' && 
-            device.deviceId !== '');
+        let inputDevices = devices.filter(device => device.kind === 'audioinput');
         
-        // Create a map of labels to avoid duplicates
-        const deviceMap = new Map();
+        // Group similar devices (same physical device with different roles in Windows)
+        const physicalDevices = new Map();
         
-        // Process non-default devices
-        inputDevices.forEach((device, index) => {
-            // Use label if available, otherwise fallback to a numbered placeholder
-            let name = device.label || `Microphone ${index + 1}`;
-            
-            if (deviceMap.has(name)) {
-                // This is a duplicate label, append a number
-                let count = 2;
-                let newName = `${name} (${count})`;
-                
-                // Keep incrementing the number until we find a unique name
-                while (deviceMap.has(newName)) {
-                    count++;
-                    newName = `${name} (${count})`;
-                }
-                name = newName;
-            }
-            
-            deviceMap.set(name, {
-                id: device.deviceId,
-                name: name,
-                isDefault: false
-            });
-        });
-        
-        // Create the final list of devices
-        let microphones = Array.from(deviceMap.values());
-        
-        // Add the default device at the beginning if it exists and has a label
-        if (defaultDevice && defaultDevice.label) {
-            // Try to find what actual device is the default
-            const actualDeviceLabel = inputDevices.find(d => 
-                d.label && defaultLabel.includes(d.label))?.label || defaultLabel;
-            
-            // Only add if it has a real label
-            if (actualDeviceLabel) {
-                microphones.unshift({
-                    id: defaultDevice.deviceId || 'default',
-                    name: `Default - ${actualDeviceLabel}`,
-                    isDefault: true
-                });
-            }
+        // Extract the base name of the device (without the "Default -" or "Communications -" prefix)
+        function getBaseDeviceName(fullName) {
+            // Remove any "Default - " or "Communications - " prefix
+            let baseName = fullName.replace(/^(Default - |Communications - )/, '');
+            return baseName.trim();
         }
         
-        console.log(`Found ${microphones.length} microphone devices with labels:`, microphones);
+        // First pass: identify physical devices by their base name
+        inputDevices.forEach(device => {
+            if (!device.label) return; // Skip devices without labels
+            
+            const baseName = getBaseDeviceName(device.label);
+            if (!physicalDevices.has(baseName)) {
+                physicalDevices.set(baseName, []);
+            }
+            physicalDevices.get(baseName).push(device);
+        });
+        
+        // Create the final list of devices, picking the most relevant one from each group
+        let microphones = [];
+        
+        // Process each physical device group
+        physicalDevices.forEach((deviceList, baseName) => {
+            // Sort to prioritize default devices first
+            deviceList.sort((a, b) => {
+                // Default device first
+                if (a.label.startsWith('Default')) return -1;
+                if (b.label.startsWith('Default')) return 1;
+                
+                // Then communications device
+                if (a.label.startsWith('Communications')) return -1;
+                if (b.label.startsWith('Communications')) return 1;
+                
+                return 0;
+            });
+            
+            // If we have multiple devices for the same physical device, show just the default one
+            // unless we don't have a default for this device
+            const defaultDevice = deviceList.find(d => d.label.startsWith('Default'));
+            
+            if (defaultDevice) {
+                // Only add the default one
+                microphones.push({
+                    id: defaultDevice.deviceId,
+                    name: defaultDevice.label,
+                    isDefault: true,
+                    physicalDevice: baseName
+                });
+            } else {
+                // No default device in this group, add the first one
+                const device = deviceList[0];
+                microphones.push({
+                    id: device.deviceId,
+                    name: device.label,
+                    isDefault: false,
+                    physicalDevice: baseName
+                });
+            }
+        });
+        
+        // Sort one more time to ensure default devices are first
+        microphones.sort((a, b) => {
+            if (a.isDefault && !b.isDefault) return -1;
+            if (!a.isDefault && b.isDefault) return 1;
+            return 0;
+        });
+        
+        console.log(`Found ${microphones.length} physical microphone devices:`, microphones);
         return microphones;
     } catch (error) {
         console.error("Error getting available microphones:", error);

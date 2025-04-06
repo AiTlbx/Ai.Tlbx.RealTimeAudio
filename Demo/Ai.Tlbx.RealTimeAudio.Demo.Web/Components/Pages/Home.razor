@@ -68,25 +68,29 @@
                 <div class="mb-4">
                     <label for="microphoneSelect" class="block text-sm font-medium text-gray-700 mb-1">Microphone</label>
                     <div class="flex gap-2">
-                        <select id="microphoneSelect" class="flex-1 p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                        @bind="selectedMicrophoneId" 
-                        disabled="@(rta.IsRecording || rta.IsConnecting || (!micPermissionGranted && !rta.IsRecording))">
-                            @if (!micPermissionGranted && !rta.IsRecording)
-                            {
-                                <option value="">Permission required</option>
-                            }
-                            else if (availableMicrophones.Count == 0)
-                            {
-                                <option value="">No microphones found</option>
-                            }
-                            else
-                            {
-                                @foreach (var mic in availableMicrophones)
+                        <div class="flex-1 overflow-hidden">
+                            <select id="microphoneSelect" 
+                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                    style="text-overflow: ellipsis;"
+                                    @bind="selectedMicrophoneId" 
+                                    disabled="@(rta.IsRecording || rta.IsConnecting || (!micPermissionGranted && !rta.IsRecording))">
+                                @if (!micPermissionGranted && !rta.IsRecording)
                                 {
-                                    <option value="@mic.Id">@mic.Name @(mic.IsDefault ? "(Default)" : "")</option>
+                                    <option value="">Permission required</option>
                                 }
-                            }
-                        </select>
+                                else if (availableMicrophones.Count == 0)
+                                {
+                                    <option value="">No microphones found</option>
+                                }
+                                else
+                                {
+                                    @foreach (var mic in availableMicrophones)
+                                    {
+                                        <option value="@mic.Id" title="@(mic.Name + (mic.IsDefault ? " (Default)" : ""))">@(TruncateText(mic.Name, 25)) @(mic.IsDefault ? "(Default)" : "")</option>
+                                    }
+                                }
+                            </select>
+                        </div>
                         <button class="p-2 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors flex items-center justify-center"
                         @onclick="RequestMicrophonePermission"
                         disabled="@(rta.IsRecording || rta.IsConnecting || isLoadingMicrophones)">
@@ -684,6 +688,15 @@
         {
             return $"Error formatting JSON: {ex.Message}";
         }
+    }
+
+    // Helper function to truncate text
+    private string TruncateText(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+            return text;
+            
+        return text.Substring(0, maxLength) + "...";
     }
 }
 
