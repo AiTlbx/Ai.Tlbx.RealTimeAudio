@@ -34,15 +34,7 @@
                             <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
                         </svg>
                         Stop
-                    </button>
-                    <button class="flex-1 py-2 px-4 rounded-md bg-amber-500 text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                    @onclick="InterruptSpeech"
-                    disabled="@(!rta.IsInitialized || rta.IsConnecting)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                        </svg>
-                        Interrupt
-                    </button>
+                    </button>                    
                 </div>
 
                 <div class="mb-4">
@@ -337,8 +329,8 @@
         // Initialize the string value based on the current enum value
         currentVoiceString = rta.CurrentVoice.ToString().ToLower();
 
-        // Check if microphone permission is already granted
-        await CheckMicrophonePermission();
+        // Don't check for microphone permission in OnInitializedAsync (during prerender)
+        // We'll do that in OnAfterRenderAsync instead
     }
     
     // Simple property changed handler to detect recording state changes
@@ -585,13 +577,7 @@
             Console.WriteLine($"Error stopping session: {ex.Message}");
             Console.WriteLine($"Stack trace: {ex.StackTrace}");
         }
-    }
-
-    private async Task InterruptSpeech()
-    {
-        await rta.InterruptSpeech();
-        await InvokeAsync(StateHasChanged);
-    }
+    }    
 
     private void ClearChat()
     {
@@ -664,6 +650,9 @@
                     }
                 }
             ");
+
+            // Check microphone permission after the component is rendered
+            await CheckMicrophonePermission();
         }
     }
 

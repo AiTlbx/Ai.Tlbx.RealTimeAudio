@@ -55,6 +55,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                     }
                 }
             }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("JavaScript interop calls cannot be issued at this time"))
+            {
+                // This happens during prerendering in Blazor
+                // Just silently fail and let the caller handle it
+                throw new InvalidOperationException("JavaScript interop calls cannot be issued during prerendering");
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WebAudioAccess] Error initializing audio: {ex.Message}");
