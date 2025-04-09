@@ -1,0 +1,34 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Ai.Tlbx.RealTimeAudio.Hardware.Linux</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>Johannes Schmidt</Authors>
+    <Company>TLBX</Company>
+    <Description>Linux-specific hardware integration for real-time audio processing</Description>
+    <PackageTags>audio;linux;realtime;hardware;alsa</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>..\..\nupkg</PackageOutputPath>
+    <PackageProjectUrl>https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio</PackageProjectUrl>
+    <Copyright>Copyright (c) 2025 Johannes Schmidt, TLBX</Copyright>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Provider\Ai.Tlbx.RealTimeAudio.OpenAi\Ai.Tlbx.RealTimeAudio.OpenAi.csproj" />
+  </ItemGroup>
+
+</Project>
