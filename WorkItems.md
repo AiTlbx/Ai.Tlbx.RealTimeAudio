@@ -29,7 +29,7 @@ workitems look like this they have a status indicator, a ticket id (naming based
 [x] LOGCLEAN-6 Replace All Error and Exception Debug.WriteLine with Logger
 
 # Linux Audio Hardware Abstraction Layer & Demo
-[ ] LINUX-0 Define Naming and Namespace Conventions:
+[x] LINUX-0 Define Naming and Namespace Conventions:
     - Hardware Project Namespace: `Ai.Tlbx.RealTimeAudio.Hardware.Linux`
     - Demo Project Namespace: `Ai.Tlbx.RealTimeAudio.Demo.Linux`
     - Project Directory Structure: `Hardware/Ai.Tlbx.RealTimeAudio.Hardware.Linux/` and `Demo/Ai.Tlbx.RealTimeAudio.Demo.Linux/`
