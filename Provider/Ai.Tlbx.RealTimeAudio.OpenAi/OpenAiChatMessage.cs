@@ -77,16 +77,14 @@ public class OpenAiChatMessage
     
     /// <summary>
     /// Creates a tool call message representing an AI's request to use a specific tool.
-    /// </summary>
-    /// <param name="toolCallId">Unique identifier for the tool call.</param>
+    /// </summary>   
     /// <param name="toolName">Name of the tool to be called.</param>
     /// <param name="argumentsJson">JSON-formatted arguments for the tool.</param>
     /// <returns>A new OpenAiChatMessage with ToolCallRole.</returns>
-    public static OpenAiChatMessage CreateToolCallMessage(string toolCallId, string toolName, string argumentsJson)
+    public static OpenAiChatMessage CreateToolCallMessage(string toolName, string argumentsJson)
     {
         var message = new OpenAiChatMessage(ToolCallRole)
-        {
-            ToolCallId = toolCallId,
+        {           
             ToolName = toolName,
             ToolArgumentsJson = argumentsJson,
             Content = $"AI requested tool: {toolName}"
@@ -101,11 +99,10 @@ public class OpenAiChatMessage
     /// <param name="toolName">Name of the tool that produced the result.</param>
     /// <param name="resultJson">JSON-formatted result from the tool execution.</param>
     /// <returns>A new OpenAiChatMessage with ToolResultRole.</returns>
-    public static OpenAiChatMessage CreateToolResultMessage(string toolCallId, string toolName, string resultJson)
+    public static OpenAiChatMessage CreateToolResultMessage(string toolName, string resultJson)
     {
         var message = new OpenAiChatMessage(ToolResultRole)
-        {
-            ToolCallId = toolCallId,
+        {    
             ToolName = toolName,
             ToolResultJson = resultJson,
             Content = $"Tool result for: {toolName}"

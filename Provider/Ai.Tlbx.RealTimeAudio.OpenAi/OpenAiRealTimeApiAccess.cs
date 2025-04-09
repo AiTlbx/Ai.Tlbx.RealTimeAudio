@@ -932,22 +932,15 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     case "response.function_call_arguments.done":
                         Log(LogCategory.WebSocket, LogLevel.Info, $"[WebSocket] Received complete function call arguments: {json.Substring(0, Math.Min(200, json.Length))}...");
                         if (root.TryGetProperty("arguments", out var argsElement) && 
-                            root.TryGetProperty("call_id", out var callIdElement))
+                            root.TryGetProperty("name", out var callName) &&
+                            root.TryGetProperty("call_id", out var callIdProp))
                         {
-                            string callId = callIdElement.GetString() ?? string.Empty;
-                            string argumentsJson = argsElement.GetString() ?? "{}";
-                            string functionName = string.Empty;
-                            
-                            // Try to extract function name if available
-                            if (root.TryGetProperty("item_id", out var itemIdElement))
-                            {
-                                // Some implementations may send function name differently
-                                // We might need to extract it from arguments or other sources
-                                functionName = itemIdElement.GetString() ?? string.Empty;
-                            }
-                            
+                            string? call_id = callIdProp.GetString() ?? string.Empty;
+                            string functionName = callName.GetString() ?? string.Empty;
+                            string argumentsJson = argsElement.GetString() ?? "{}";                            
+                                                                                  
                             // Add Tool Call message to history
-                            var toolCallMessage = OpenAiChatMessage.CreateToolCallMessage(callId, functionName, argumentsJson);
+                            var toolCallMessage = OpenAiChatMessage.CreateToolCallMessage(functionName, argumentsJson);
                             _chatHistory.Add(toolCallMessage);
                             MessageAdded?.Invoke(this, toolCallMessage); // Notify UI
                             
@@ -957,56 +950,56 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                             if (tool != null)
                             {
                                 // Execute the tool directly
-                                Log(LogCategory.Tooling, LogLevel.Info, $"[Tooling] Executing tool: {tool.Name} (ID: {callId})");
+                                Log(LogCategory.Tooling, LogLevel.Info, $"[Tooling] Executing tool: {tool.Name} (ID: {call_id})");
                                 try
                                 {
                                     // Execute the tool
                                     string result = await tool.ExecuteAsync(argumentsJson);
                                     
                                     // Add Tool Result message to history
-                                    var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(callId, tool.Name, result);
+                                    var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name, result);
                                     _chatHistory.Add(toolResultMessage);
                                     MessageAdded?.Invoke(this, toolResultMessage); // Notify UI
                                     
                                     // Send the result back to OpenAI using the correct format
-                                    await SendToolResultAsync(callId, result);
+                                    await SendToolResultAsync(call_id, result);
                                     
                                     // Notify any listeners about the tool result
                                     ToolResultAvailable?.Invoke(this, (tool.Name, result));
                                 }
                                 catch (Exception ex)
                                 {
-                                    Log(LogCategory.Tooling, LogLevel.Error, $"[Tooling] Error executing tool '{tool.Name}' (ID: {callId}): {ex.Message}", ex);
+                                    Log(LogCategory.Tooling, LogLevel.Error, $"[Tooling] Error executing tool '{tool.Name}' (ID: {call_id}): {ex.Message}", ex);
                                     string errorResult = JsonSerializer.Serialize(new { error = $"Failed to execute tool: {ex.Message}" });
                                     
                                     // Add a failure message
-                                    var toolErrorMessage = OpenAiChatMessage.CreateToolResultMessage(callId, tool.Name, errorResult);
+                                    var toolErrorMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name, errorResult);
                                     _chatHistory.Add(toolErrorMessage);
                                     MessageAdded?.Invoke(this, toolErrorMessage);
                                     
                                     // Send the error back to OpenAI
-                                    await SendToolResultAsync(callId, errorResult);
+                                    await SendToolResultAsync(call_id, errorResult);
                                 }
                             }
                             else if (ToolCallRequested != null)
                             {
                                 // If we don't have the tool implementation but external handlers are subscribed
                                 // Notify external subscribers 
-                                ToolCallRequested?.Invoke(this, new ToolCallEventArgs(callId, functionName, argumentsJson));
+                                ToolCallRequested?.Invoke(this, new ToolCallEventArgs(call_id, functionName, argumentsJson));
                             }
                             else
                             {
                                 // No tool handler available
-                                Log(LogCategory.Tooling, LogLevel.Info, $"[Tooling] No tool implementation for call ID: {callId}");
+                                Log(LogCategory.Tooling, LogLevel.Info, $"[Tooling] No tool implementation for call ID: {call_id}");
                                 string errorResult = JsonSerializer.Serialize(new { error = "No tool implementation available." });
                                 
                                 // Add a result message indicating failure
-                                var toolNotFoundMessage = OpenAiChatMessage.CreateToolResultMessage(callId, "unknown_tool", errorResult);
+                                var toolNotFoundMessage = OpenAiChatMessage.CreateToolResultMessage("unknown_tool", errorResult);
                                 _chatHistory.Add(toolNotFoundMessage);
                                 MessageAdded?.Invoke(this, toolNotFoundMessage);
                                 
                                 // Send the error result back to OpenAI
-                                await SendToolResultAsync(callId, errorResult);
+                                await SendToolResultAsync(call_id, errorResult);
                             }
                         }
                         break;
@@ -1518,6 +1511,14 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
 
             Log(LogCategory.WebSocket, LogLevel.Info, $"[WebSocket] Sending function result for call ID: {callId}, Result: {result.ToJson()}");
             await SendAsync(functionResultMessage);
+
+            var requestResponseMessage = new
+            {
+                type = "response.create"
+            };
+
+            await SendAsync(requestResponseMessage);
+
         }
 
         /// <summary>
@@ -1559,7 +1560,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             try
             {
                 // Add a message to chat history for the tool result
-                var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(toolCallId, toolName, result);
+                var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(toolName, result);
                 _chatHistory.Add(toolResultMessage);
                 MessageAdded?.Invoke(this, toolResultMessage);
 

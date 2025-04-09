@@ -1,4 +1,6 @@
 # How this document works
+**Note:** All code implementations related to the work items below MUST adhere to the guidelines specified in `CodeStyleGuide.md`.
+
 Tasks have headlines and workitems 
 workitems look like this they have a status indicator, a ticket id (naming based on a shorthand of the headline) and description:
 [ ] DOC-1 Headline of workitem 
@@ -25,6 +27,43 @@ workitems look like this they have a status indicator, a ticket id (naming based
 [x] LOGCLEAN-4 Replace All Audio/Session Debug.WriteLine with Logger
 [x] LOGCLEAN-5 Replace All Tool-related Debug.WriteLine with Logger
 [x] LOGCLEAN-6 Replace All Error and Exception Debug.WriteLine with Logger
+
+# Linux Audio Hardware Abstraction Layer & Demo
+[ ] LINUX-0 Define Naming and Namespace Conventions:
+    - Hardware Project Namespace: `Ai.Tlbx.RealTimeAudio.Hardware.Linux`
+    - Demo Project Namespace: `Ai.Tlbx.RealTimeAudio.Demo.Linux`
+    - Project Directory Structure: `Hardware/Ai.Tlbx.RealTimeAudio.Hardware.Linux/` and `Demo/Ai.Tlbx.RealTimeAudio.Demo.Linux/`
+    - Test Directory Structure: `tests/Hardware/` and `tests/Demo/` (following project naming)
+[ ] LINUX-1 Create new C# Class Library project: `Ai.Tlbx.RealTimeAudio.Hardware.Linux` in `Hardware/`.
+[ ] LINUX-2 Add project reference from the Linux Hardware project to `Ai.Tlbx.RealTimeAudio` (assuming it contains `IAudioHardwareAccess`).
+[ ] LINUX-3 Create class `LinuxAudioDevice` in `LinuxAudioDevice.cs` within the hardware project, implement `IAudioHardwareAccess`.
+[ ] LINUX-4 Determine ALSA interaction method: Use direct P/Invoke to `libasound.so.2` or find/add a suitable NuGet wrapper. Note: Direct file I/O on `/dev/snd/` devices is insufficient; ALSA configuration via API is required.
+[ ] LINUX-5 Implement `GetInputDevices` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-6 Implement `GetOutputDevices` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-7 Implement `InitializeInputDevice` in `LinuxAudioDevice` (PCM16, 16000 Hz or configurable, first available ALSA device, configuring via ALSA API).
+[ ] LINUX-8 Implement `InitializeOutputDevice` in `LinuxAudioDevice` (PCM16, 16000 Hz or configurable, first available ALSA device, configuring via ALSA API).
+[ ] LINUX-9 Implement `StartRecording` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-10 Implement `StopRecording` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-11 Implement `StartPlayback` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-12 Implement `StopPlayback` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-13 Implement `WriteToOutputDevice` in `LinuxAudioDevice` (using ALSA API).
+[ ] LINUX-14 Implement `DataAvailable` event logic in `LinuxAudioDevice` (based on ALSA capture).
+[ ] LINUX-15 Implement logging in `LinuxAudioDevice` using injected logger.
+[ ] LINUX-16 Configure the hardware project file (`.csproj`) for cross-platform/Linux (net9.0, potentially add Linux RID).
+[ ] LINUX-17 Add unit test project (`tests/Hardware/...Tests/`) for `LinuxAudioDevice` (use mocking).
+[ ] LINUX-18 Add integration test project (`tests/Hardware/...IntegrationTests/`) (requires Linux environment/mocking ALSA).
+[ ] LINUX-19 Create new C# Console App project: `Ai.Tlbx.RealTimeAudio.Demo.Linux` in `Demo/`.
+[ ] LINUX-20 Add project reference from the Linux Demo project to the Linux Hardware project.
+[ ] LINUX-21 Add project reference from the Linux Demo project to `Ai.Tlbx.RealTimeAudio`.
+[ ] LINUX-22 Instantiate `LinuxAudioDevice` in the demo's `Program.cs`.
+[ ] LINUX-23 Instantiate `OpenAiRealTimeApiAccess` in `Program.cs`, injecting the `LinuxAudioDevice` instance.
+[ ] LINUX-24 Implement basic command-line interaction (e.g., start/stop stream) in `Program.cs`.
+[ ] LINUX-25 Configure the demo project file (`.csproj`) for Linux execution (net9.0, specify Linux RID e.g., `linux-arm64` for RPi).
+[ ] LINUX-26 Set up basic logging in `Program.cs`, passing logger delegate to dependencies.
+[ ] LINUX-27 Implement configuration (e.g., `appsettings.json`, User Secrets) for API keys in the demo project.
+[ ] LINUX-28 Add `README.md` to the demo project directory with build/run instructions for Linux/Raspberry Pi. Include instructions to install the native ALSA library (e.g., 'sudo apt install libasound2' on Debian/Ubuntu).
+[ ] LINUX-29 Test audio input capture on target Linux/Raspberry Pi system.
+[ ] LINUX-30 Test audio output playback on target Linux/Raspberry Pi system.
 
 
 
