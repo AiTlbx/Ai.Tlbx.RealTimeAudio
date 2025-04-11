@@ -1,0 +1,41 @@
+@page "/chat"
+
+<h3>Chat Widget</h3>
+
+<div class="chat-container">
+    <div class="chat-messages">
+        @foreach (var message in Messages)
+        {
+            <div class="chat-message @(message.IsUser ? "user-message" : "ai-message")">
+                <span>@message.Content</span>
+            </div>
+        }
+    </div>
+    <div class="chat-input">
+        <input type="text" @bind="NewMessage" placeholder="Type your message..." />
+        <button @onclick="SendMessage">Send</button>
+    </div>
+</div>
+
+@code {
+    public List<ChatMessage> Messages { get; set; } = new List<ChatMessage>();
+    public string NewMessage { get; set; } = string.Empty;
+
+    public class ChatMessage
+    {
+        public string Content { get; set; } = string.Empty;
+        public bool IsUser { get; set; }
+    }
+
+    public EventCallback<string> OnMessageSent { get; set; }
+
+    private async Task SendMessage()
+    {
+        if (!string.IsNullOrWhiteSpace(NewMessage))
+        {
+            Messages.Add(new ChatMessage { Content = NewMessage, IsUser = true });
+            await OnMessageSent.InvokeAsync(NewMessage);
+            NewMessage = string.Empty;
+        }
+    }
+}

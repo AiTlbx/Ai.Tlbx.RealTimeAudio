@@ -1,0 +1,27 @@
+@page "/aitalk"
+
+<h3>AI Talk Control</h3>
+
+<div class="control-container">
+    <button @onclick="StartTalk" disabled="@IsTalking">Start Talking</button>
+    <button @onclick="StopTalk" disabled="@(!IsTalking)">Stop Talking</button>
+</div>
+
+@code {
+    public bool IsTalking { get; set; } = false;
+
+    public EventCallback OnStartTalking { get; set; }
+    public EventCallback OnStopTalking { get; set; }
+
+    private async Task StartTalk()
+    {
+        IsTalking = true;
+        await OnStartTalking.InvokeAsync();
+    }
+
+    private async Task StopTalk()
+    {
+        IsTalking = false;
+        await OnStopTalking.InvokeAsync();
+    }
+}

@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
+using System.Linq;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 {
@@ -13,17 +16,20 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
     public class LinuxAudioDevice : IAudioHardwareAccess
     {
         private const int DEFAULT_SAMPLE_RATE = 16000;
-        private const string ALSA_LIBRARY = "libasound.so.2";
+        private const uint DEFAULT_CHANNELS = 1; // Mono
+        private const int DEFAULT_PERIOD_SIZE = 1024; // Frames per period
+        private const int DEFAULT_BUFFER_SIZE = 8192; // Total buffer size in frames
         
         private bool _isInitialized = false;
         private bool _isRecording = false;
-        private string? _currentMicrophoneId = null;
+        private string _currentMicrophoneId = "default";
         private List<AudioDeviceInfo>? _availableMicrophones = null;
         private IntPtr _captureHandle = IntPtr.Zero;
         private IntPtr _playbackHandle = IntPtr.Zero;
         private Task? _recordingTask = null;
         private CancellationTokenSource? _recordingCts = null;
         private MicrophoneAudioReceivedEventHandler? _audioDataHandler = null;
+        private Action<LogLevel, string>? _logger;
         
         /// <summary>
         /// Event that fires when an audio error occurs in the ALSA hardware
@@ -43,32 +49,267 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         }
 
         /// <summary>
+        /// Initializes a new instance of the LinuxAudioDevice class with a logger.
+        /// </summary>
+        public LinuxAudioDevice(Action<LogLevel, string> logger) : this()
+        {
+            _logger = logger;
+        }
+
+        private void Log(LogLevel level, string message)
+        {
+            _logger?.Invoke(level, $"[LinuxAudioDevice] {message}");
+            
+            if (level >= LogLevel.Error)
+            {
+                Debug.WriteLine($"[ERROR] {message}");
+            }
+            else if (level == LogLevel.Warning)
+            {
+                Debug.WriteLine($"[WARNING] {message}");
+            }
+            else
+            {
+                Debug.WriteLine($"[INFO] {message}");
+            }
+        }
+
+        /// <summary>
         /// Initializes the ALSA audio hardware and prepares it for recording and playback.
         /// </summary>
         public async Task InitAudio()
         {
-            if (_isInitialized) return;
+            if (_isInitialized)
+            {
+                Log(LogLevel.Info, "Audio already initialized");
+                return;
+            }
 
             try
             {
                 await Task.Run(() => 
                 {
-                    // We will implement actual ALSA initialization in a future version
-                    // For now, we just check if the library is available
-                    if (!NativeLibrary.TryLoad(ALSA_LIBRARY, out IntPtr alsaHandle))
+                    Log(LogLevel.Info, "Initializing ALSA audio subsystem");
+                    
+                    // Check if ALSA library is available
+                    if (!NativeLibrary.TryLoad(AlsaNative.ALSA_LIBRARY, out IntPtr alsaHandle))
                     {
-                        throw new DllNotFoundException($"Could not load ALSA library. Please ensure '{ALSA_LIBRARY}' is installed on your system.");
+                        var error = $"Could not load ALSA library. Please ensure '{AlsaNative.ALSA_LIBRARY}' is installed on your system.";
+                        Log(LogLevel.Error, error);
+                        throw new DllNotFoundException(error);
                     }
                     
                     NativeLibrary.Free(alsaHandle);
+                    Log(LogLevel.Info, $"Successfully loaded {AlsaNative.ALSA_LIBRARY}");
+                    
+                    // Initialize capture device (microphone)
+                    InitializeCapture();
+                    
+                    // Initialize playback device (speakers)
+                    InitializePlayback();
+                    
                     _isInitialized = true;
+                    Log(LogLevel.Info, "ALSA audio subsystem initialized successfully");
                 });
+            }
+            catch (DllNotFoundException ex)
+            {
+                var errorMsg = $"ALSA library not found: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
+                throw;
+            }
+            catch (AlsaException ex)
+            {
+                var errorMsg = $"ALSA initialization error: {ex.Message}, Error code: {ex.ErrorCode}, Operation: {ex.Operation}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
+                throw;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"ALSA initialization error: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to initialize ALSA audio: {ex.Message}");
+                var errorMsg = $"Failed to initialize ALSA audio: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
                 throw;
+            }
+        }
+
+        private void InitializeCapture()
+        {
+            Log(LogLevel.Info, $"Initializing capture device: {_currentMicrophoneId}");
+            
+            // Open the PCM device for capture
+            int err = AlsaNative.snd_pcm_open(
+                out _captureHandle, 
+                _currentMicrophoneId, 
+                AlsaNative.SndPcmStreamType.SND_PCM_STREAM_CAPTURE, 
+                0);
+            
+            if (err < 0)
+            {
+                string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                throw new AlsaException(
+                    $"Failed to open capture device '{_currentMicrophoneId}': {errorMsg}", 
+                    err, 
+                    "snd_pcm_open");
+            }
+            
+            Log(LogLevel.Debug, $"Capture device opened: {_currentMicrophoneId}");
+            
+            // Set hardware parameters
+            ConfigurePcmDevice(_captureHandle, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, "capture");
+        }
+
+        private void InitializePlayback()
+        {
+            Log(LogLevel.Info, "Initializing playback device: default");
+            
+            // Open the PCM device for playback
+            int err = AlsaNative.snd_pcm_open(
+                out _playbackHandle, 
+                "default", 
+                AlsaNative.SndPcmStreamType.SND_PCM_STREAM_PLAYBACK, 
+                0);
+            
+            if (err < 0)
+            {
+                string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                throw new AlsaException(
+                    $"Failed to open playback device 'default': {errorMsg}", 
+                    err, 
+                    "snd_pcm_open");
+            }
+            
+            Log(LogLevel.Debug, "Playback device opened: default");
+            
+            // Set hardware parameters
+            ConfigurePcmDevice(_playbackHandle, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, "playback");
+        }
+
+        private void ConfigurePcmDevice(IntPtr pcmHandle, uint sampleRate, uint channels, string deviceType)
+        {
+            Log(LogLevel.Debug, $"Configuring {deviceType} device: rate={sampleRate}Hz, channels={channels}");
+            
+            IntPtr hwParams = IntPtr.Zero;
+            
+            try
+            {
+                // Allocate hardware parameters object
+                int err = AlsaNative.snd_pcm_hw_params_malloc(out hwParams);
+                if (err < 0)
+                {
+                    throw new AlsaException(
+                        $"Failed to allocate hardware parameters: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_malloc");
+                }
+                
+                // Fill hw_params with default values
+                err = AlsaNative.snd_pcm_hw_params_any(pcmHandle, hwParams);
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params_any"))
+                {
+                    throw new AlsaException(
+                        $"Failed to initialize hardware parameters: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_any");
+                }
+                
+                // Set access type
+                err = AlsaNative.snd_pcm_hw_params_set_access(
+                    pcmHandle, 
+                    hwParams, 
+                    AlsaNative.SndPcmAccessType.SND_PCM_ACCESS_RW_INTERLEAVED);
+                
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params_set_access"))
+                {
+                    throw new AlsaException(
+                        $"Failed to set access type: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_set_access");
+                }
+                
+                // Set sample format (16-bit signed little-endian)
+                err = AlsaNative.snd_pcm_hw_params_set_format(
+                    pcmHandle, 
+                    hwParams, 
+                    AlsaNative.SndPcmFormat.SND_PCM_FORMAT_S16_LE);
+                
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params_set_format"))
+                {
+                    throw new AlsaException(
+                        $"Failed to set sample format: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_set_format");
+                }
+                
+                // Set sample rate
+                err = AlsaNative.snd_pcm_hw_params_set_rate(pcmHandle, hwParams, sampleRate, 0);
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params_set_rate"))
+                {
+                    throw new AlsaException(
+                        $"Failed to set sample rate: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_set_rate");
+                }
+                
+                // Set channels (mono/stereo)
+                err = AlsaNative.snd_pcm_hw_params_set_channels(pcmHandle, hwParams, channels);
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params_set_channels"))
+                {
+                    throw new AlsaException(
+                        $"Failed to set channels: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params_set_channels");
+                }
+                
+                // Set buffer size
+                err = AlsaNative.snd_pcm_hw_params_set_buffer_size(pcmHandle, hwParams, DEFAULT_BUFFER_SIZE);
+                if (err < 0)
+                {
+                    // Non-critical, we'll log but continue
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    Log(LogLevel.Warning, $"Failed to set buffer size: {errorMsg}");
+                }
+                
+                // Set period size
+                err = AlsaNative.snd_pcm_hw_params_set_period_size(pcmHandle, hwParams, DEFAULT_PERIOD_SIZE, 0);
+                if (err < 0)
+                {
+                    // Non-critical, we'll log but continue
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    Log(LogLevel.Warning, $"Failed to set period size: {errorMsg}");
+                }
+                
+                // Apply hardware parameters
+                err = AlsaNative.snd_pcm_hw_params(pcmHandle, hwParams);
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_hw_params"))
+                {
+                    throw new AlsaException(
+                        $"Failed to set hardware parameters: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_hw_params");
+                }
+                
+                // Prepare the PCM device
+                err = AlsaNative.snd_pcm_prepare(pcmHandle);
+                if (!HandleAlsaError(err, pcmHandle, "snd_pcm_prepare"))
+                {
+                    throw new AlsaException(
+                        $"Failed to prepare PCM device: {AlsaNative.GetAlsaErrorMessage(err)}", 
+                        err, 
+                        "snd_pcm_prepare");
+                }
+                
+                Log(LogLevel.Info, $"{deviceType} device configured successfully");
+            }
+            finally
+            {
+                // Free hardware parameters
+                if (hwParams != IntPtr.Zero)
+                {
+                    AlsaNative.snd_pcm_hw_params_free(hwParams);
+                }
             }
         }
 
@@ -84,30 +325,151 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             if (_availableMicrophones != null)
             {
+                Log(LogLevel.Debug, "Returning cached microphone list");
                 return _availableMicrophones;
             }
 
             try
             {
-                // In a full implementation, we would enumerate ALSA capture devices
-                // For now, we create a placeholder default device
+                Log(LogLevel.Info, "Enumerating ALSA capture devices");
+                _availableMicrophones = new List<AudioDeviceInfo>();
+                bool defaultFound = false;
+
+                // Get all sound devices (both input and output)
+                IntPtr hintsPtr = IntPtr.Zero;
+                int err = AlsaNative.snd_device_name_hint(-1, "pcm", out hintsPtr);
+                
+                if (err < 0)
+                {
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    throw new AlsaException(
+                        $"Failed to get device hints: {errorMsg}", 
+                        err, 
+                        "snd_device_name_hint");
+                }
+
+                try
+                {
+                    // Loop through the hints
+                    IntPtr hintPtr = hintsPtr;
+                    int count = 0;
+                    
+                    while (hintPtr != IntPtr.Zero && Marshal.ReadIntPtr(hintPtr) != IntPtr.Zero)
+                    {
+                        IntPtr namePtr = AlsaNative.snd_device_name_get_hint(Marshal.ReadIntPtr(hintPtr), "NAME");
+                        IntPtr descPtr = AlsaNative.snd_device_name_get_hint(Marshal.ReadIntPtr(hintPtr), "DESC");
+                        IntPtr ioPtr = AlsaNative.snd_device_name_get_hint(Marshal.ReadIntPtr(hintPtr), "IOID");
+                        
+                        string name = Marshal.PtrToStringAnsi(namePtr) ?? string.Empty;
+                        string desc = Marshal.PtrToStringAnsi(descPtr) ?? string.Empty;
+                        string io = Marshal.PtrToStringAnsi(ioPtr) ?? string.Empty;
+                        
+                        // Free allocated strings
+                        if (namePtr != IntPtr.Zero) Marshal.FreeHGlobal(namePtr);
+                        if (descPtr != IntPtr.Zero) Marshal.FreeHGlobal(descPtr);
+                        if (ioPtr != IntPtr.Zero) Marshal.FreeHGlobal(ioPtr);
+                        
+                        // If IOID is null or "Input", it's a capture device
+                        if (!string.IsNullOrEmpty(name) && (string.IsNullOrEmpty(io) || io.Equals("Input", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            bool isDefault = name.Equals("default", StringComparison.OrdinalIgnoreCase);
+                            
+                            // Don't add special devices like "null", "pulse", etc.
+                            if (!name.Equals("null", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var device = new AudioDeviceInfo
+                                {
+                                    Id = name,
+                                    Name = !string.IsNullOrEmpty(desc) ? desc : name,
+                                    IsDefault = isDefault
+                                };
+                                
+                                _availableMicrophones.Add(device);
+                                
+                                if (isDefault)
+                                {
+                                    defaultFound = true;
+                                }
+                                
+                                count++;
+                                Log(LogLevel.Debug, $"Found capture device: {name} ({desc})");
+                            }
+                        }
+                        
+                        // Move to next hint
+                        hintPtr = IntPtr.Add(hintPtr, IntPtr.Size);
+                    }
+                    
+                    // If no default device was found but we have devices, mark the first one as default
+                    if (!defaultFound && _availableMicrophones.Count > 0)
+                    {
+                        _availableMicrophones[0].IsDefault = true;
+                        Log(LogLevel.Debug, $"No default device found, setting {_availableMicrophones[0].Id} as default");
+                    }
+                    
+                    // Ensure we always have at least the "default" device
+                    if (_availableMicrophones.Count == 0)
+                    {
+                        _availableMicrophones.Add(new AudioDeviceInfo
+                        {
+                            Id = "default",
+                            Name = "Default ALSA Capture Device",
+                            IsDefault = true
+                        });
+                        
+                        Log(LogLevel.Warning, "No capture devices found, using 'default' as fallback");
+                    }
+                    
+                    Log(LogLevel.Info, $"Found {count} capture devices");
+                }
+                finally
+                {
+                    // Free hints
+                    if (hintsPtr != IntPtr.Zero)
+                    {
+                        AlsaNative.snd_device_name_free_hint(hintsPtr);
+                    }
+                }
+                
+                return _availableMicrophones;
+            }
+            catch (AlsaException ex)
+            {
+                string errorMsg = $"Error enumerating ALSA devices: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
+                
+                // Fallback to a default device
                 _availableMicrophones = new List<AudioDeviceInfo>
                 {
                     new AudioDeviceInfo
                     {
                         Id = "default",
-                        Name = "Default ALSA Capture Device",
+                        Name = "Default ALSA Capture Device (Fallback)",
                         IsDefault = true
                     }
                 };
-
+                
                 return _availableMicrophones;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error getting microphones: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to get microphones: {ex.Message}");
-                return new List<AudioDeviceInfo>();
+                string errorMsg = $"Error getting microphones: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
+                
+                // Fallback to a default device
+                _availableMicrophones = new List<AudioDeviceInfo>
+                {
+                    new AudioDeviceInfo
+                    {
+                        Id = "default",
+                        Name = "Default ALSA Capture Device (Fallback)",
+                        IsDefault = true
+                    }
+                };
+                
+                return _availableMicrophones;
             }
         }
 
@@ -121,7 +483,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 await InitAudio();
             }
 
-            return _currentMicrophoneId ?? "default";
+            return _currentMicrophoneId;
         }
 
         /// <summary>
@@ -136,13 +498,79 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             try
             {
+                if (string.IsNullOrEmpty(deviceId))
+                {
+                    Log(LogLevel.Error, "Cannot set microphone: Device ID is null or empty");
+                    return false;
+                }
+                
+                Log(LogLevel.Info, $"Switching microphone device to: {deviceId}");
+                
+                // Check if device ID exists in available microphones
+                var availableMics = await GetAvailableMicrophones();
+                bool deviceExists = availableMics.Any(m => m.Id.Equals(deviceId, StringComparison.OrdinalIgnoreCase));
+                
+                if (!deviceExists)
+                {
+                    Log(LogLevel.Warning, $"Microphone device '{deviceId}' not found in available devices, will try anyway");
+                }
+                
+                // If we're recording, we need to stop first
+                bool wasRecording = _isRecording;
+                MicrophoneAudioReceivedEventHandler? savedHandler = null;
+                
+                if (wasRecording)
+                {
+                    Log(LogLevel.Debug, "Recording in progress, temporarily stopping to change device");
+                    savedHandler = _audioDataHandler;
+                    await StopRecordingAudio();
+                }
+                
+                // Close the existing capture handle if it's open
+                if (_captureHandle != IntPtr.Zero)
+                {
+                    Log(LogLevel.Debug, "Closing existing capture handle");
+                    AlsaNative.snd_pcm_close(_captureHandle);
+                    _captureHandle = IntPtr.Zero;
+                }
+                
+                // Save the new device ID
                 _currentMicrophoneId = deviceId;
+                
+                // Open the new device
+                int err = AlsaNative.snd_pcm_open(
+                    out _captureHandle, 
+                    _currentMicrophoneId, 
+                    AlsaNative.SndPcmStreamType.SND_PCM_STREAM_CAPTURE, 
+                    0);
+                
+                if (err < 0)
+                {
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    throw new AlsaException(
+                        $"Failed to open capture device '{_currentMicrophoneId}': {errorMsg}", 
+                        err, 
+                        "snd_pcm_open");
+                }
+                
+                // Configure the new device
+                ConfigurePcmDevice(_captureHandle, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, "capture");
+                
+                // Restart recording if it was active
+                if (wasRecording && savedHandler != null)
+                {
+                    Log(LogLevel.Debug, "Restarting recording with new device");
+                    await StartRecordingAudio(savedHandler);
+                }
+                
+                Log(LogLevel.Info, $"Microphone successfully changed to: {deviceId}");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error setting microphone: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to set microphone: {ex.Message}");
+                string errorMsg = $"Error setting microphone device: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
                 return false;
             }
         }
@@ -159,40 +587,161 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             if (_isRecording)
             {
+                Log(LogLevel.Warning, "Recording already in progress");
                 return true; // Already recording
             }
 
             try
             {
-                _audioDataHandler = audioDataReceivedHandler;
+                _audioDataHandler = audioDataReceivedHandler ?? throw new ArgumentNullException(nameof(audioDataReceivedHandler));
                 _recordingCts = new CancellationTokenSource();
                 
-                // For now, we'll simulate audio captures with a simple timer
-                // In a real implementation, this would be replaced with ALSA capture code
+                // Make sure the capture device is prepared
+                int err = AlsaNative.snd_pcm_prepare(_captureHandle);
+                if (err < 0)
+                {
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    throw new AlsaException(
+                        $"Failed to prepare capture device for recording: {errorMsg}", 
+                        err, 
+                        "snd_pcm_prepare");
+                }
+                
+                // Start the recording task
                 _recordingTask = Task.Run(async () =>
                 {
-                    _isRecording = true;
-                    
-                    // Simulate audio data with empty packets
-                    while (!_recordingCts.Token.IsCancellationRequested)
+                    try
                     {
-                        // In a real implementation, this would be actual audio data from ALSA
-                        string emptyAudioData = Convert.ToBase64String(new byte[3200]); // 100ms of silence at 16kHz mono 16-bit
+                        _isRecording = true;
+                        Log(LogLevel.Info, "Starting ALSA recording");
                         
-                        _audioDataHandler?.Invoke(this, new MicrophoneAudioReceivedEvenArgs(emptyAudioData));
+                        // Start the PCM device
+                        err = AlsaNative.snd_pcm_start(_captureHandle);
+                        if (err < 0)
+                        {
+                            string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                            throw new AlsaException(
+                                $"Failed to start capture device: {errorMsg}", 
+                                err, 
+                                "snd_pcm_start");
+                        }
                         
-                        await Task.Delay(100, _recordingCts.Token); // 100ms chunks
+                        // Calculate buffer size (100ms of audio at 16kHz, 16-bit mono)
+                        // 2 bytes per sample * 1 channel * 16000 samples per second * 0.1 seconds = 3200 bytes
+                        int bytesPerFrame = 2 * (int)DEFAULT_CHANNELS; // 16-bit = 2 bytes per sample
+                        int framesPerBuffer = DEFAULT_SAMPLE_RATE / 10; // 100ms of audio
+                        int bufferSize = framesPerBuffer * bytesPerFrame;
+                        
+                        byte[] buffer = new byte[bufferSize];
+                        int packetsRead = 0;
+                        int totalBytesRead = 0;
+                        
+                        Log(LogLevel.Debug, $"Recording buffer size: {bufferSize} bytes ({framesPerBuffer} frames)");
+                        
+                        // Recording loop
+                        while (!_recordingCts.Token.IsCancellationRequested)
+                        {
+                            // Read audio data
+                            long framesRead = AlsaNative.snd_pcm_readi(_captureHandle, buffer, (ulong)framesPerBuffer);
+                            
+                            // Handle errors
+                            if (framesRead < 0)
+                            {
+                                if (framesRead == -AlsaNative.EPIPE) // Overrun
+                                {
+                                    Log(LogLevel.Warning, "Buffer overrun detected, recovering");
+                                    AlsaNative.snd_pcm_recover(_captureHandle, -AlsaNative.EPIPE, 1);
+                                    continue;
+                                }
+                                else if (framesRead == -AlsaNative.ESTRPIPE) // Suspended
+                                {
+                                    Log(LogLevel.Warning, "PCM device suspended, recovering");
+                                    while ((err = AlsaNative.snd_pcm_resume(_captureHandle)) == -AlsaNative.EAGAIN)
+                                    {
+                                        await Task.Delay(100, _recordingCts.Token);
+                                    }
+                                    
+                                    if (err < 0)
+                                    {
+                                        AlsaNative.snd_pcm_prepare(_captureHandle);
+                                    }
+                                    continue;
+                                }
+                                
+                                // Other error, try to recover
+                                string errorMsg = AlsaNative.GetAlsaErrorMessage((int)framesRead);
+                                Log(LogLevel.Error, $"PCM read error: {errorMsg}, attempting recovery");
+                                
+                                if (AlsaNative.snd_pcm_recover(_captureHandle, (int)framesRead, 1) < 0)
+                                {
+                                    throw new AlsaException(
+                                        $"Failed to recover from PCM read error: {errorMsg}", 
+                                        (int)framesRead, 
+                                        "snd_pcm_recover");
+                                }
+                                continue;
+                            }
+                            
+                            // If we got some data, convert and send it
+                            if (framesRead > 0)
+                            {
+                                int bytesRead = (int)framesRead * bytesPerFrame;
+                                totalBytesRead += bytesRead;
+                                packetsRead++;
+                                
+                                // If we read less than a full buffer, trim it
+                                byte[] dataToSend = buffer;
+                                if (bytesRead < buffer.Length)
+                                {
+                                    dataToSend = new byte[bytesRead];
+                                    Array.Copy(buffer, dataToSend, bytesRead);
+                                }
+                                
+                                // Convert the PCM data to Base64 string and send
+                                string base64Audio = Convert.ToBase64String(dataToSend);
+                                _audioDataHandler?.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64Audio));
+                                
+                                if (packetsRead % 100 == 0) // Log every 100 packets (10 seconds)
+                                {
+                                    Log(LogLevel.Debug, $"Recording stats: {packetsRead} packets, {totalBytesRead / 1024} KB total");
+                                }
+                            }
+                            
+                            // Small delay to prevent CPU overuse on slower systems
+                            if (_recordingCts.Token.IsCancellationRequested)
+                            {
+                                break;
+                            }
+                            
+                            await Task.Delay(1, _recordingCts.Token);
+                        }
+                        
+                        Log(LogLevel.Info, $"Recording stopped after {packetsRead} packets ({totalBytesRead / 1024} KB)");
                     }
-                    
-                    _isRecording = false;
+                    catch (OperationCanceledException)
+                    {
+                        // Normal cancellation, just log it
+                        Log(LogLevel.Info, "Recording task cancelled");
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(LogLevel.Error, $"Recording error: {ex.Message}");
+                        AudioError?.Invoke(this, $"Recording error: {ex.Message}");
+                    }
+                    finally
+                    {
+                        _isRecording = false;
+                    }
                 }, _recordingCts.Token);
                 
+                Log(LogLevel.Info, "Recording started successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error starting recording: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to start recording: {ex.Message}");
+                string errorMsg = $"Error starting recording: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
                 _isRecording = false;
                 return false;
             }
@@ -205,11 +754,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         {
             if (!_isRecording)
             {
+                Log(LogLevel.Debug, "Not recording, nothing to stop");
                 return true; // Not recording
             }
 
             try
             {
+                Log(LogLevel.Info, "Stopping recording");
                 _recordingCts?.Cancel();
                 
                 if (_recordingTask != null)
@@ -221,16 +772,38 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     catch (OperationCanceledException)
                     {
                         // Expected when we cancel the task
+                        Log(LogLevel.Debug, "Recording task cancelled successfully");
+                    }
+                }
+                
+                // Stop the PCM device
+                if (_captureHandle != IntPtr.Zero)
+                {
+                    int err = AlsaNative.snd_pcm_drop(_captureHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Failed to drop capture device: {errorMsg}");
+                    }
+                    
+                    // Prepare the device for next use
+                    err = AlsaNative.snd_pcm_prepare(_captureHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Failed to prepare capture device after stop: {errorMsg}");
                     }
                 }
                 
                 _isRecording = false;
+                Log(LogLevel.Info, "Recording stopped successfully");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error stopping recording: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to stop recording: {ex.Message}");
+                string errorMsg = $"Error stopping recording: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
                 return false;
             }
         }
@@ -242,19 +815,139 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         {
             if (!_isInitialized)
             {
-                InitAudio().Wait();
+                try
+                {
+                    InitAudio().Wait();
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Error, $"Failed to initialize audio for playback: {ex.Message}");
+                    AudioError?.Invoke(this, $"Failed to initialize audio for playback: {ex.Message}");
+                    return false;
+                }
             }
 
             try
             {
-                // In a real implementation, this would send the audio data to ALSA for playback
-                Debug.WriteLine($"Would play {base64EncodedPcm16Audio.Length} bytes of Base64 audio at {sampleRate}Hz");
+                if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
+                {
+                    Log(LogLevel.Warning, "Empty audio data provided for playback");
+                    return false;
+                }
+                
+                // Check if sample rate matches our device settings
+                if (sampleRate != DEFAULT_SAMPLE_RATE)
+                {
+                    Log(LogLevel.Warning, $"Sample rate mismatch: Audio is {sampleRate}Hz, device is {DEFAULT_SAMPLE_RATE}Hz");
+                    // In a production system, we would implement resampling here
+                }
+                
+                // Make sure the playback device is prepared
+                int err = AlsaNative.snd_pcm_prepare(_playbackHandle);
+                if (err < 0)
+                {
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    throw new AlsaException(
+                        $"Failed to prepare playback device: {errorMsg}", 
+                        err, 
+                        "snd_pcm_prepare");
+                }
+                
+                // Decode base64 to byte array
+                byte[] audioData = Convert.FromBase64String(base64EncodedPcm16Audio);
+                
+                // The number of frames is the byte count divided by (bytes per sample * channels)
+                int bytesPerFrame = 2 * (int)DEFAULT_CHANNELS; // 16-bit = 2 bytes per sample
+                ulong frames = (ulong)(audioData.Length / bytesPerFrame);
+                
+                Log(LogLevel.Debug, $"Playing {audioData.Length} bytes ({frames} frames) of audio");
+                
+                // Write all frames to the PCM device
+                long framesWritten = 0;
+                ulong framesRemaining = frames;
+                int offset = 0;
+                
+                while (framesRemaining > 0)
+                {
+                    // Try to write all remaining frames
+                    framesWritten = AlsaNative.snd_pcm_writei(_playbackHandle, audioData, framesRemaining);
+                    
+                    // Handle errors
+                    if (framesWritten < 0)
+                    {
+                        if (framesWritten == -AlsaNative.EPIPE) // Underrun
+                        {
+                            Log(LogLevel.Warning, "Buffer underrun detected, recovering");
+                            err = AlsaNative.snd_pcm_recover(_playbackHandle, -AlsaNative.EPIPE, 1);
+                            if (err < 0)
+                            {
+                                string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                                throw new AlsaException(
+                                    $"Failed to recover from underrun: {errorMsg}", 
+                                    err, 
+                                    "snd_pcm_recover");
+                            }
+                            continue;
+                        }
+                        else if (framesWritten == -AlsaNative.ESTRPIPE) // Suspended
+                        {
+                            Log(LogLevel.Warning, "PCM device suspended, recovering");
+                            while ((err = AlsaNative.snd_pcm_resume(_playbackHandle)) == -AlsaNative.EAGAIN)
+                            {
+                                Thread.Sleep(100);
+                            }
+                            
+                            if (err < 0)
+                            {
+                                err = AlsaNative.snd_pcm_prepare(_playbackHandle);
+                                if (err < 0)
+                                {
+                                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                                    throw new AlsaException(
+                                        $"Failed to prepare device after suspend: {errorMsg}", 
+                                        err, 
+                                        "snd_pcm_prepare");
+                                }
+                            }
+                            continue;
+                        }
+                        
+                        // Other error, try to recover
+                        string otherErrorMsg = AlsaNative.GetAlsaErrorMessage((int)framesWritten);
+                        Log(LogLevel.Error, $"PCM write error: {otherErrorMsg}, attempting recovery");
+                        
+                        err = AlsaNative.snd_pcm_recover(_playbackHandle, (int)framesWritten, 1);
+                        if (err < 0)
+                        {
+                            throw new AlsaException(
+                                $"Failed to recover from PCM write error: {otherErrorMsg}", 
+                                (int)framesWritten, 
+                                "snd_pcm_recover");
+                        }
+                        continue;
+                    }
+                    
+                    // Update counters for next iteration
+                    framesRemaining -= (ulong)framesWritten;
+                    offset += (int)(framesWritten * bytesPerFrame);
+                }
+                
+                // Wait until all frames have been played
+                err = AlsaNative.snd_pcm_drain(_playbackHandle);
+                if (err < 0)
+                {
+                    string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                    Log(LogLevel.Warning, $"Failed to drain playback device: {errorMsg}");
+                }
+                
+                Log(LogLevel.Debug, $"Finished playing {frames} frames of audio");
                 return true;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error playing audio: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to play audio: {ex.Message}");
+                string errorMsg = $"Error playing audio: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
                 return false;
             }
         }
@@ -271,13 +964,43 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             try
             {
-                // In a real implementation, this would clear the ALSA playback buffer
-                Debug.WriteLine("Clearing audio queue");
+                if (_playbackHandle == IntPtr.Zero)
+                {
+                    Log(LogLevel.Debug, "No active playback handle to clear");
+                    return;
+                }
+                
+                Log(LogLevel.Info, "Clearing audio playback queue");
+                
+                // Lock to prevent concurrent access issues
+                lock (this)
+                {
+                    // Drop immediately stops playback and drops all pending frames
+                    int err = AlsaNative.snd_pcm_drop(_playbackHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Failed to drop playback: {errorMsg}");
+                    }
+                    
+                    // Prepare the device for future playback
+                    err = AlsaNative.snd_pcm_prepare(_playbackHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Failed to prepare playback device after dropping: {errorMsg}");
+                    }
+                    else
+                    {
+                        Log(LogLevel.Info, "Audio queue cleared successfully");
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error clearing audio queue: {ex.Message}");
-                AudioError?.Invoke(this, $"Failed to clear audio queue: {ex.Message}");
+                string errorMsg = $"Error clearing audio queue: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
             }
         }
 
@@ -286,12 +1009,210 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         /// </summary>
         public async ValueTask DisposeAsync()
         {
-            await StopRecordingAudio();
+            Log(LogLevel.Info, "Disposing LinuxAudioDevice");
             
-            // In a real implementation, we would clean up ALSA resources here
-            _isInitialized = false;
+            // Use a flag to prevent double-disposal
+            if (!_isInitialized) 
+            {
+                Log(LogLevel.Debug, "Already disposed or not initialized");
+                return;
+            }
             
-            GC.SuppressFinalize(this);
+            // Stop any ongoing recording
+            if (_isRecording)
+            {
+                Log(LogLevel.Debug, "Stopping active recording during disposal");
+                await StopRecordingAudio();
+            }
+            
+            // Release the recording task and handler
+            _recordingTask = null;
+            _audioDataHandler = null;
+            
+            // Cancel any pending tasks
+            if (_recordingCts != null)
+            {
+                Log(LogLevel.Debug, "Cancelling recording token source");
+                try
+                {
+                    _recordingCts.Cancel();
+                    _recordingCts.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Log(LogLevel.Warning, $"Error disposing cancellation token source: {ex.Message}");
+                }
+                _recordingCts = null;
+            }
+            
+            try
+            {
+                // Close the capture device
+                if (_captureHandle != IntPtr.Zero)
+                {
+                    Log(LogLevel.Debug, "Closing capture handle");
+                    int err = AlsaNative.snd_pcm_close(_captureHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Error closing capture device: {errorMsg}");
+                    }
+                    _captureHandle = IntPtr.Zero;
+                }
+                
+                // Close the playback device
+                if (_playbackHandle != IntPtr.Zero)
+                {
+                    Log(LogLevel.Debug, "Closing playback handle");
+                    int err = AlsaNative.snd_pcm_close(_playbackHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Error closing playback device: {errorMsg}");
+                    }
+                    _playbackHandle = IntPtr.Zero;
+                }
+                
+                // Clear the microphone list
+                _availableMicrophones = null;
+                
+                _isInitialized = false;
+                Log(LogLevel.Info, "LinuxAudioDevice disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                string errorMsg = $"Error during disposal of LinuxAudioDevice: {ex.Message}";
+                Log(LogLevel.Error, errorMsg);
+                AudioError?.Invoke(this, errorMsg);
+                throw;
+            }
+            finally
+            {
+                // Ensure state is reset even if an exception occurred
+                _captureHandle = IntPtr.Zero;
+                _playbackHandle = IntPtr.Zero;
+                _isInitialized = false;
+                
+                GC.SuppressFinalize(this);
+            }
+        }
+
+        /// <summary>
+        /// Handles ALSA errors and attempts recovery if possible.
+        /// </summary>
+        /// <param name="err">The error code returned by an ALSA function</param>
+        /// <param name="pcmHandle">The PCM device handle</param>
+        /// <param name="operation">Name of the operation that failed</param>
+        /// <returns>True if recovery was successful, false otherwise</returns>
+        /// <exception cref="AlsaException">Thrown if recovery fails and the error is not recoverable</exception>
+        private bool HandleAlsaError(int err, IntPtr pcmHandle, string operation)
+        {
+            if (err >= 0)
+            {
+                return true; // Not an error
+            }
+            
+            string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+            
+            // Handle common error cases
+            if (err == -AlsaNative.EPIPE) // Xrun (buffer over/underrun)
+            {
+                Log(LogLevel.Warning, $"{operation}: Buffer xrun error (over/underrun), attempting recovery");
+                
+                int recoverErr = AlsaNative.snd_pcm_recover(pcmHandle, -AlsaNative.EPIPE, 1);
+                if (recoverErr < 0)
+                {
+                    string recoverErrorMsg = AlsaNative.GetAlsaErrorMessage(recoverErr);
+                    Log(LogLevel.Error, $"Failed to recover from xrun: {recoverErrorMsg}");
+                    throw new AlsaException(
+                        $"Failed to recover from xrun: {recoverErrorMsg}", 
+                        recoverErr, 
+                        "snd_pcm_recover");
+                }
+                
+                Log(LogLevel.Info, "Successfully recovered from xrun");
+                return true;
+            }
+            else if (err == -AlsaNative.ESTRPIPE) // PCM suspended
+            {
+                Log(LogLevel.Warning, $"{operation}: PCM device suspended, attempting recovery");
+                
+                // Wait for the device to be resumed
+                while ((err = AlsaNative.snd_pcm_resume(pcmHandle)) == -AlsaNative.EAGAIN)
+                {
+                    Log(LogLevel.Debug, "Device busy, waiting for resume...");
+                    Thread.Sleep(100);
+                }
+                
+                if (err < 0)
+                {
+                    // If resume fails, try to prepare the device
+                    Log(LogLevel.Warning, "Resume failed, attempting to prepare device");
+                    err = AlsaNative.snd_pcm_prepare(pcmHandle);
+                    if (err < 0)
+                    {
+                        string recoverErrorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Error, $"Failed to prepare device after suspend: {recoverErrorMsg}");
+                        throw new AlsaException(
+                            $"Failed to prepare device after suspend: {recoverErrorMsg}", 
+                            err, 
+                            "snd_pcm_prepare");
+                    }
+                }
+                
+                Log(LogLevel.Info, "Successfully recovered from suspend");
+                return true;
+            }
+            else if (err == -AlsaNative.EBADFD) // PCM in wrong state
+            {
+                Log(LogLevel.Warning, $"{operation}: PCM device in wrong state, attempting recovery");
+                
+                // Get the current state
+                AlsaNative.SndPcmState state = AlsaNative.snd_pcm_state(pcmHandle);
+                Log(LogLevel.Debug, $"Current PCM state: {state}");
+                
+                // Attempt to reset to a known state
+                if (state != AlsaNative.SndPcmState.SND_PCM_STATE_PREPARED)
+                {
+                    err = AlsaNative.snd_pcm_prepare(pcmHandle);
+                    if (err < 0)
+                    {
+                        string recoverErrorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Error, $"Failed to prepare PCM device: {recoverErrorMsg}");
+                        throw new AlsaException(
+                            $"Failed to prepare PCM device: {recoverErrorMsg}", 
+                            err, 
+                            "snd_pcm_prepare");
+                    }
+                }
+                
+                Log(LogLevel.Info, "Successfully recovered from bad file descriptor state");
+                return true;
+            }
+            else if (err == -AlsaNative.EAGAIN) // Resource temporarily unavailable
+            {
+                Log(LogLevel.Warning, $"{operation}: Resource temporarily unavailable, retrying may help");
+                return false; // Caller should retry
+            }
+            else
+            {
+                // General recovery attempt for other errors
+                Log(LogLevel.Warning, $"{operation}: ALSA error: {errorMsg}, attempting general recovery");
+                
+                int recoverErr = AlsaNative.snd_pcm_recover(pcmHandle, err, 1);
+                if (recoverErr < 0)
+                {
+                    string recoverErrorMsg = AlsaNative.GetAlsaErrorMessage(recoverErr);
+                    Log(LogLevel.Error, $"Failed to recover from error: {recoverErrorMsg}");
+                    throw new AlsaException(
+                        $"Failed to recover from error: {errorMsg}", 
+                        err, 
+                        operation);
+                }
+                
+                Log(LogLevel.Info, "Successfully recovered from error");
+                return true;
+            }
         }
     }
 } 

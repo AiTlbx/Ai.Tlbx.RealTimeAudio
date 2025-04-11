@@ -18,4 +18,8 @@
     <PackageReference Include="Ai.Tlbx.RealTimeAudio.OpenAi" Version="1.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\WebUi\Ai.Tlbx.RealTime.WebUi\Ai.Tlbx.RealTime.WebUi.csproj" />
+  </ItemGroup>
+
 </Project>

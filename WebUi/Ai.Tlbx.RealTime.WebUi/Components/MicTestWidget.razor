@@ -1,0 +1,26 @@
+@page "/mictest"
+
+<h3>Microphone Test</h3>
+
+<div class="mic-test-container">
+    <button @onclick="StartTest">Start Test</button>
+    <div class="mic-level">Level: @MicLevel</div>
+</div>
+
+@code {
+    public int MicLevel { get; set; } = 0;
+
+    public EventCallback OnStartTest { get; set; }
+
+    private async Task StartTest()
+    {
+        await OnStartTest.InvokeAsync();
+    }
+
+    // Placeholder for updating mic level from audio data
+    public void UpdateMicLevel(int level)
+    {
+        MicLevel = level;
+        StateHasChanged();
+    }
+}

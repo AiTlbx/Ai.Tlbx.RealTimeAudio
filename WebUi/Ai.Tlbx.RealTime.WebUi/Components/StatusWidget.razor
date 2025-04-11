@@ -1,0 +1,34 @@
+@page "/status"
+
+<h3>Status and Errors</h3>
+
+<div class="status-container">
+    <div class="status-message" style="color: @(StatusColor)">@CurrentStatus</div>
+    @if (!string.IsNullOrEmpty(ErrorMessage))
+    {
+        <div class="error-message">Error: @ErrorMessage</div>
+    }
+</div>
+
+@code {
+    public string CurrentStatus { get; set; } = "Idle";
+    public string StatusColor { get; set; } = "green";
+    public string ErrorMessage { get; set; } = string.Empty;
+
+    // Method to be called by parent component to update status
+    public void UpdateStatus(string status, string color = "green")
+    {
+        CurrentStatus = status;
+        StatusColor = color;
+        ErrorMessage = string.Empty;
+        StateHasChanged();
+    }
+
+    // Method to display error messages
+    public void ShowError(string error)
+    {
+        ErrorMessage = error;
+        StatusColor = "red";
+        StateHasChanged();
+    }
+}
