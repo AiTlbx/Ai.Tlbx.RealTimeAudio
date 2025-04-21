@@ -55,7 +55,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         /// <summary>
         /// Creates a default settings object
         /// </summary>
-        public OpenAiRealTimeSettings() { }
+        public OpenAiRealTimeSettings()
+        {
+        }
         
         /// <summary>
         /// Factory method to create default settings

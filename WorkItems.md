@@ -224,4 +224,11 @@ workitems look like this they have a status indicator, a ticket id (naming based
     - Add test cases for each widget's functionality
     - Ensure automated UI testing capability
 
+# Code Style Guide Violations
+[x] CODESTYLE-1 Convert empty constructor in `OpenAiRealTimeSettings` (OpenAiRealTimeSettings.cs) to Allman brace style.
+[x] CODESTYLE-2 Convert single-line braces in `AlsaException` constructors (AlsaException.cs) to Allman style.
+[x] CODESTYLE-3 Reorder methods in `OpenAiRealTimeApiAccess.cs` to place public methods before private methods.
+[x] CODESTYLE-4 Add explicit access modifier (`internal`) to `Program` class in Demo Linux `Program.cs`.
+[x] CODESTYLE-5 Replace `Console.WriteLine` calls with provided logger or `Debug.WriteLine` in `WebAudioAccess.cs`.
+
 

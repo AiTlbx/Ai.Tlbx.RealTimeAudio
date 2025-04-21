@@ -3,6 +3,7 @@ using Ai.Tlbx.RealTimeAudio.OpenAi;
 using Microsoft.JSInterop;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
@@ -63,7 +64,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Error initializing audio: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Error initializing audio: {ex.Message}");
                 await OnAudioError($"Audio initialization failed: {ex.Message}");
                 throw;
             }
@@ -72,7 +73,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         [JSInvokable]
         public Task OnAudioError(string errorMessage)
         {
-            Console.WriteLine($"[WebAudioAccess] Audio error from JavaScript: {errorMessage}");
+            Debug.WriteLine($"[WebAudioAccess] Audio error from JavaScript: {errorMessage}");
             AudioError?.Invoke(this, errorMessage);
             return Task.CompletedTask;
         }
@@ -94,7 +95,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             {
                 // Store both the audio data and sample rate
                 _audioQueue.Enqueue($"{base64EncodedPcm16Audio}|{sampleRate}");                    
-                Console.WriteLine($"[WebAudioAccess] Audio chunk queued. Queue size: {_audioQueue.Count} items");
+                Debug.WriteLine($"[WebAudioAccess] Audio chunk queued. Queue size: {_audioQueue.Count} items");
                 
                 // If nothing is currently playing, start the audio processing
                 if (!_isPlaying)
@@ -105,19 +106,19 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                     {
                         try
                         {
-                            Console.WriteLine("[WebAudioAccess] Starting audio playback pipeline in background...");
+                            Debug.WriteLine("[WebAudioAccess] Starting audio playback pipeline in background...");
                             await ProcessAudioQueue();
                         }
                         catch (Exception ex)
                         {
-                            Console.WriteLine($"[WebAudioAccess] Error in background playback: {ex.Message}");
+                            Debug.WriteLine($"[WebAudioAccess] Error in background playback: {ex.Message}");
                         }
                         finally
                         {
                             lock (_audioLock)
                             {
                                 _isPlaying = false;
-                                Console.WriteLine("[WebAudioAccess] Playback finished, isPlaying set to false");
+                                Debug.WriteLine("[WebAudioAccess] Playback finished, isPlaying set to false");
                             }
                         }
                     });
@@ -134,14 +135,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 
             try
             {
-                Console.WriteLine($"[WebAudioAccess] Sending audio chunk to browser for playback. Size: {base64EncodedPcm16Audio.Length} chars");                 
+                Debug.WriteLine($"[WebAudioAccess] Sending audio chunk to browser for playback. Size: {base64EncodedPcm16Audio.Length} chars");                 
                 await _audioModule.InvokeVoidAsync("playAudio", base64EncodedPcm16Audio, sampleRate);
-                Console.WriteLine("[WebAudioAccess] Audio playback started in browser");
+                Debug.WriteLine("[WebAudioAccess] Audio playback started in browser");
             }
             catch (JSDisconnectedException jsEx)
             {
                 // Circuit has disconnected
-                Console.WriteLine($"[WebAudioAccess] JSDisconnectedException: {jsEx.Message}");
+                Debug.WriteLine($"[WebAudioAccess] JSDisconnectedException: {jsEx.Message}");
                 lock (_audioLock)
                 {
                     _audioQueue.Clear();
@@ -151,8 +152,8 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Error in PlayAudioChunk: {ex.Message}");
-                Console.WriteLine($"[WebAudioAccess] Stack trace: {ex.StackTrace}");
+                Debug.WriteLine($"[WebAudioAccess] Error in PlayAudioChunk: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Stack trace: {ex.StackTrace}");
                 throw;
             }
         }
@@ -186,7 +187,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 {
                     // Add padding to make length a multiple of 4
                     base64 += new string('=', 4 - remainder);
-                    Console.WriteLine("[WebAudioAccess] Fixed base64 padding");
+                    Debug.WriteLine("[WebAudioAccess] Fixed base64 padding");
                 }
                 
                 // Test if it's valid now
@@ -195,7 +196,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Error fixing base64: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Error fixing base64: {ex.Message}");
                 return base64; // Return original if fix fails
             }
         }
@@ -211,12 +212,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                     if (_audioQueue.Count > 0)
                     {
                         nextChunk = _audioQueue.Dequeue();
-                        Console.WriteLine($"[WebAudioAccess] Audio chunk dequeued. Remaining queue size: {_audioQueue.Count} items");
+                        Debug.WriteLine($"[WebAudioAccess] Audio chunk dequeued. Remaining queue size: {_audioQueue.Count} items");
                     }
                     else
                     {
                         // No more chunks to process
-                        Console.WriteLine("[WebAudioAccess] All audio chunks processed, queue is empty");
+                        Debug.WriteLine("[WebAudioAccess] All audio chunks processed, queue is empty");
                         return;
                     }
                 }
@@ -227,7 +228,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 int sampleRate = parts.Length > 1 && int.TryParse(parts[1], out int rate) ? rate : 24000;
 
                 // Log audio chunk details
-                Console.WriteLine($"[WebAudioAccess] Processing audio chunk. Size: {audioData.Length} chars, Sample rate: {sampleRate} Hz");
+                Debug.WriteLine($"[WebAudioAccess] Processing audio chunk. Size: {audioData.Length} chars, Sample rate: {sampleRate} Hz");
 
                 // Play the chunk outside the lock
                 await PlayAudioChunk(audioData, sampleRate);
@@ -241,7 +242,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 // Don't start if already recording
                 if (_isRecording)
                 {
-                    Console.WriteLine("[WebAudioAccess] Already recording, ignoring start request");
+                    Debug.WriteLine("[WebAudioAccess] Already recording, ignoring start request");
                     return true;
                 }
                 
@@ -267,26 +268,26 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 // Start recording in JavaScript with the selected device if available
                 try
                 {
-                    Console.WriteLine("[WebAudioAccess] Starting recording with JS using dotNetReference");
-                    Console.WriteLine($"[WebAudioAccess] Using device ID: {_selectedMicrophoneId ?? "default"}");
+                    Debug.WriteLine("[WebAudioAccess] Starting recording with JS using dotNetReference");
+                    Debug.WriteLine($"[WebAudioAccess] Using device ID: {_selectedMicrophoneId ?? "default"}");
                     var result = await _audioModule.InvokeAsync<bool>("startRecording", _dotNetReference, 500, _selectedMicrophoneId); // 500ms upload interval, selected device ID
                     
                     if (result)
                     {
-                        Console.WriteLine("[WebAudioAccess] Recording started successfully");
+                        Debug.WriteLine("[WebAudioAccess] Recording started successfully");
                         _isRecording = true;
                         return true;
                     }
                     else
                     {
-                        Console.WriteLine("[WebAudioAccess] Failed to start recording from JS");
+                        Debug.WriteLine("[WebAudioAccess] Failed to start recording from JS");
                         CleanupRecording();
                         return false;
                     }
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[WebAudioAccess] Exception while starting recording: {ex.Message}");
+                    Debug.WriteLine($"[WebAudioAccess] Exception while starting recording: {ex.Message}");
                     await OnAudioError($"Failed to start recording: {ex.Message}");
                     CleanupRecording();
                     return false;
@@ -294,7 +295,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Exception in StartRecordingAudio: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Exception in StartRecordingAudio: {ex.Message}");
                 await OnAudioError($"Microphone access failed: {ex.Message}");
                 return false;
             }
@@ -304,33 +305,33 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         public Task ReceiveAudioData(string base64EncodedPcm16Audio)
         {
             // Log that the method was called using console logging
-            Console.WriteLine($"[WebAudioAccess] ReceiveAudioData called, data length: {base64EncodedPcm16Audio?.Length ?? 0}");
+            Debug.WriteLine($"[WebAudioAccess] ReceiveAudioData called, data length: {base64EncodedPcm16Audio?.Length ?? 0}");
 
             try
             {
                 // Check if the handler is null
                 if (_audioDataReceivedHandler == null)
                 {
-                    Console.WriteLine("[WebAudioAccess] Error: _audioDataReceivedHandler is null");
+                    Debug.WriteLine("[WebAudioAccess] Error: _audioDataReceivedHandler is null");
                     return Task.CompletedTask;
                 }
 
                 // Check if the data is valid
                 if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
                 {
-                    Console.WriteLine("[WebAudioAccess] Error: Received empty audio data");
+                    Debug.WriteLine("[WebAudioAccess] Error: Received empty audio data");
                     return Task.CompletedTask;
                 }
 
                 // Invoke the callback with the received audio data
                 _audioDataReceivedHandler.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64EncodedPcm16Audio));
-                Console.WriteLine("[WebAudioAccess] Successfully invoked _audioDataReceivedHandler");
+                Debug.WriteLine("[WebAudioAccess] Successfully invoked _audioDataReceivedHandler");
             }
             catch (Exception ex)
             {
                 // Log the error with console logging
-                Console.WriteLine($"[WebAudioAccess] Error in ReceiveAudioData: {ex.Message}");
-                Console.WriteLine($"[WebAudioAccess] Stack trace: {ex.StackTrace}");
+                Debug.WriteLine($"[WebAudioAccess] Error in ReceiveAudioData: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Stack trace: {ex.StackTrace}");
             }
 
             return Task.CompletedTask;
@@ -384,7 +385,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 {
                     queuedItems = _audioQueue.Count;
                     _audioQueue.Clear();
-                    Console.WriteLine($"[WebAudioAccess] Cleared audio queue with {queuedItems} pending items");
+                    Debug.WriteLine($"[WebAudioAccess] Cleared audio queue with {queuedItems} pending items");
                 }
 
                 // Stop any current audio playback
@@ -425,19 +426,19 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 
             if (_audioModule == null)
             {
-                Console.WriteLine("[WebAudioAccess] Cannot get available microphones: audio module is null");
+                Debug.WriteLine("[WebAudioAccess] Cannot get available microphones: audio module is null");
                 return new List<AudioDeviceInfo>();
             }
 
             try
             {
                 var devices = await _audioModule.InvokeAsync<List<AudioDeviceInfo>>("getAvailableMicrophones");
-                Console.WriteLine($"[WebAudioAccess] Found {devices.Count} microphone devices");
+                Debug.WriteLine($"[WebAudioAccess] Found {devices.Count} microphone devices");
                 return devices;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Error getting available microphones: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Error getting available microphones: {ex.Message}");
                 await OnAudioError($"Failed to get microphone list: {ex.Message}");
                 return new List<AudioDeviceInfo>();
             }
@@ -447,7 +448,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         {
             if (string.IsNullOrEmpty(deviceId))
             {
-                Console.WriteLine("[WebAudioAccess] Cannot set microphone device: deviceId is null or empty");
+                Debug.WriteLine("[WebAudioAccess] Cannot set microphone device: deviceId is null or empty");
                 return false;
             }
 
@@ -458,19 +459,19 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 
             if (_audioModule == null)
             {
-                Console.WriteLine("[WebAudioAccess] Cannot set microphone device: audio module is null");
+                Debug.WriteLine("[WebAudioAccess] Cannot set microphone device: audio module is null");
                 return false;
             }
 
             try
             {
                 _selectedMicrophoneId = deviceId;
-                Console.WriteLine($"[WebAudioAccess] Microphone device set to: {deviceId}");
+                Debug.WriteLine($"[WebAudioAccess] Microphone device set to: {deviceId}");
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[WebAudioAccess] Error setting microphone device: {ex.Message}");
+                Debug.WriteLine($"[WebAudioAccess] Error setting microphone device: {ex.Message}");
                 await OnAudioError($"Failed to set microphone device: {ex.Message}");
                 return false;
             }
@@ -511,7 +512,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[WebAudioAccess] Error disposing DotNetObjectReference: {ex.Message}");
+                    Debug.WriteLine($"[WebAudioAccess] Error disposing DotNetObjectReference: {ex.Message}");
                 }
                 finally
                 {
