@@ -306,13 +306,19 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 // Clear any queued audio to stop playback immediately
                 await _hardwareAccess.ClearAudioQueue();
 
+                // Log buffer and websocket state
+                Log(LogCategory.WebSocket, LogLevel.Info, $"[Stop] Audio queue cleared. WebSocket state: {_webSocket?.State}");
+
                 // Send session close message
                 await SendAsync(new
                 {
                     type = "session.close"
                 });
 
-                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Recording stopped");
+                // Close the websocket and cancel receive loop
+                await Cleanup();
+
+                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Recording stopped and websocket closed");
             }
             catch (Exception ex)
             {
