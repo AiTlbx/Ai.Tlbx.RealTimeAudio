@@ -290,17 +290,69 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// </summary>
         public async Task Stop()
         {
+            if (!_isRecording)
+            {
+                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Not recording, cannot stop");
+                return;
+            }
+
+            _isRecording = false;
+            ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Stopping recording...");
+
             try
             {
-                _isRecording = false;
+                // Stop recording on the hardware
                 await _hardwareAccess.StopRecordingAudio();
-                await Cleanup();
-                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Stopped recording and closed connection");
+                // Clear any queued audio to stop playback immediately
+                await _hardwareAccess.ClearAudioQueue();
+
+                // Send session close message
+                await SendAsync(new
+                {
+                    type = "session.close"
+                });
+
+                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Recording stopped");
             }
             catch (Exception ex)
             {
-                _lastErrorMessage = ex.Message;
-                ReportStatus(StatusCategory.Error, StatusCode.GeneralError, $"Error stopping: {ex.Message}", ex);
+                ReportStatus(StatusCategory.Error, StatusCode.GeneralError, $"Error stopping recording: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// Interrupts the current audio session, stopping playback immediately.
+        /// </summary>
+        /// <returns>A task representing the asynchronous operation.</returns>
+        public async Task Interrupt()
+        {
+            if (!_isInitialized)
+            {
+                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Not initialized, cannot interrupt");
+                return;
+            }
+
+            ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Interrupting audio session...");
+
+            try
+            {
+                // Stop any ongoing playback
+                await _hardwareAccess.ClearAudioQueue();
+
+                // Send an interrupt message to the API if connected
+                if (_webSocket?.State == WebSocketState.Open)
+                {
+                    await SendAsync(new
+                    {
+                        type = "input_audio_buffer.clear"
+                    });
+                }
+
+                ReportStatus(StatusCategory.Recording, StatusCode.RecordingStopped, "Audio session interrupted");
+            }
+            catch (Exception ex)
+            {
+                ReportStatus(StatusCategory.Error, StatusCode.GeneralError, $"Error interrupting session: {ex.Message}", ex);
             }
         }
 
@@ -957,7 +1009,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                                     string result = await tool.ExecuteAsync(argumentsJson);
                                     
                                     // Add Tool Result message to history
-                                    var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name, result);
+                                    var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name ?? "unknown_tool", result);
                                     _chatHistory.Add(toolResultMessage);
                                     MessageAdded?.Invoke(this, toolResultMessage); // Notify UI
                                     
@@ -965,7 +1017,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                                     await SendToolResultAsync(call_id, result);
                                     
                                     // Notify any listeners about the tool result
-                                    ToolResultAvailable?.Invoke(this, (tool.Name, result));
+                                    ToolResultAvailable?.Invoke(this, (tool.Name ?? "unknown_tool", result));
                                 }
                                 catch (Exception ex)
                                 {
@@ -973,7 +1025,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                                     string errorResult = JsonSerializer.Serialize(new { error = $"Failed to execute tool: {ex.Message}" });
                                     
                                     // Add a failure message
-                                    var toolErrorMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name, errorResult);
+                                    var toolErrorMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name ?? "unknown_tool", errorResult);
                                     _chatHistory.Add(toolErrorMessage);
                                     MessageAdded?.Invoke(this, toolErrorMessage);
                                     

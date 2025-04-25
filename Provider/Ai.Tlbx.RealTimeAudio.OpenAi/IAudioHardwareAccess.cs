@@ -45,8 +45,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         Task<bool> StopRecordingAudio();
 
         /// <summary>
-        /// Clears any pending audio in the queue and stops the current playback
-        /// Used when the user interrupts the AI's response
+        /// Clears any pending audio in the queue and stops the current playback immediately.
+        /// Used when the user interrupts the AI's response to ensure no buffered audio continues playing.
         /// </summary>
         Task ClearAudioQueue();
 

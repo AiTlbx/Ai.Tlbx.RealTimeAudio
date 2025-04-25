@@ -58,6 +58,10 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         MicrophoneTestStarted,
         MicrophoneTestCompleted,
         MicrophoneTestFailed,
+        Stopping,
+        Stopped,
+        Interrupting,
+        Interrupted,
         
         // Processing related
         ProcessingStarted,
@@ -76,6 +80,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         GeneralError,
         AudioError,
         NetworkError,
+        Error,
         
         // Tool related
         ToolCallReceived,

@@ -11,19 +11,19 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
 {
     public class WindowsAudioHardware : IAudioHardwareAccess
     {
-        private WaveInEvent _waveIn;
+        private WaveInEvent? _waveIn;
         private bool _isRecording;
-        private CancellationTokenSource _cancellationTokenSource;
+        private CancellationTokenSource? _cancellationTokenSource;
         private readonly int _sampleRate;
         private readonly int _channelCount;
         private readonly int _bitsPerSample;
-        private WaveOutEvent _waveOut;
-        private BufferedWaveProvider _bufferedWaveProvider;
-        private MicrophoneAudioReceivedEventHandler _audioDataReceivedHandler;
+        private WaveOutEvent? _waveOut;
+        private BufferedWaveProvider? _bufferedWaveProvider;
+        private MicrophoneAudioReceivedEventHandler? _audioDataReceivedHandler;
         private bool _isInitialized = false;
         private int _selectedDeviceNumber = 0; // Default to first device
 
-        public event EventHandler<string> AudioError;
+        public event EventHandler<string>? AudioError;
 
         public WindowsAudioHardware(int sampleRate = 24000, int channelCount = 1, int bitsPerSample = 16)
         {
@@ -33,11 +33,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             _isRecording = false;
         }
 
-        public async Task InitAudio()
+        public Task InitAudio()
         {
             if (_isInitialized)
             {
-                return;
+                return Task.CompletedTask;
             }
 
             try
@@ -50,7 +50,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     string error = "No audio input devices detected";
                     Debug.WriteLine(error);
                     AudioError?.Invoke(this, error);
-                    return;
+                    return Task.CompletedTask;
                 }
 
                 Debug.WriteLine($"Found {deviceCount} input devices:");
@@ -76,12 +76,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
+            return Task.CompletedTask;
         }
 
         public async Task<bool> StartRecordingAudio(MicrophoneAudioReceivedEventHandler audioDataReceivedHandler)
         {
             if (_isRecording)
             {
+                await Task.CompletedTask;
                 return true;
             }
 
@@ -114,7 +116,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
 
                 _waveIn.RecordingStopped += (s, e) =>
                 {
-                    if (e.Exception != null)
+                    if (e?.Exception != null)
                     {
                         Debug.WriteLine($"Recording stopped with error: {e.Exception.Message}");
                         AudioError?.Invoke(this, $"Recording error: {e.Exception.Message}");
@@ -137,38 +139,41 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             }
         }
 
-        public async Task<bool> StopRecordingAudio()
+        public Task<bool> StopRecordingAudio()
         {
             if (!_isRecording)
             {
-                return true;
+                return Task.FromResult(true);
             }
 
             try
             {
                 Debug.WriteLine("Stopping audio recording...");
 
-                _waveIn.StopRecording();
-                _waveIn.DataAvailable -= OnDataAvailable;
-                _waveIn.Dispose();
-                _waveIn = null;
+                _waveIn?.StopRecording();
+                if (_waveIn != null)
+                {
+                    _waveIn.DataAvailable -= OnDataAvailable;
+                    _waveIn.Dispose();
+                    _waveIn = null;
+                }
 
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
                 _cancellationTokenSource = null;
 
                 _isRecording = false;
                 _audioDataReceivedHandler = null;
 
                 Debug.WriteLine("Recording stopped successfully");
-                return true;
+                return Task.FromResult(true);
             }
             catch (Exception ex)
             {
                 string error = $"Error stopping recording: {ex.Message}";
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
-                return false;
+                return Task.FromResult(false);
             }
         }
 
@@ -183,11 +188,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 }
 
                 byte[] audioData = Convert.FromBase64String(base64EncodedPcm16Audio);
-                _bufferedWaveProvider.AddSamples(audioData, 0, audioData.Length);
-
-                if (_waveOut.PlaybackState != PlaybackState.Playing)
+                if (_bufferedWaveProvider != null)
                 {
-                    _waveOut.Play();
+                    _bufferedWaveProvider.AddSamples(audioData, 0, audioData.Length);
+                }
+
+                if (_waveOut?.PlaybackState != PlaybackState.Playing)
+                {
+                    _waveOut?.Play();
                 }
 
                 return true;
@@ -205,10 +213,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         {
             try
             {
-                Debug.WriteLine("Clearing audio buffer...");
-                _bufferedWaveProvider.ClearBuffer();
-                _waveOut.Stop();
-                Debug.WriteLine("Audio buffer cleared");
+                Debug.WriteLine("Clearing audio buffer...");                
+                int bufferSizeBeforeClear = _bufferedWaveProvider?.BufferedBytes ?? 0;
+                _bufferedWaveProvider?.ClearBuffer();
+                _waveOut?.Stop();
+                Debug.WriteLine($"Audio buffer cleared. Bytes before clear: {bufferSizeBeforeClear}");
             }
             catch (Exception ex)
             {
@@ -216,16 +225,20 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
+            await Task.CompletedTask;
         }
 
-        private void OnDataAvailable(object sender, WaveInEventArgs e)
+        private void OnDataAvailable(object? sender, WaveInEventArgs? e)
         {
             try
             {
-                if (e.BytesRecorded > 0 && _audioDataReceivedHandler != null)
+                if (e?.BytesRecorded > 0 && _audioDataReceivedHandler != null)
                 {
                     var buffer = new byte[e.BytesRecorded];
-                    Array.Copy(e.Buffer, buffer, e.BytesRecorded);
+                    if (e.Buffer != null)
+                    {
+                        Array.Copy(e.Buffer, buffer, e.BytesRecorded);
+                    }
 
                     string base64Audio = Convert.ToBase64String(buffer);
                     Debug.WriteLine($"Audio data recorded: {e.BytesRecorded} bytes, base64 length: {base64Audio.Length}");
@@ -273,7 +286,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
-
+            await Task.CompletedTask;
             return result;
         }
 
@@ -314,13 +327,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
-
+            await Task.CompletedTask;
             return false;
         }
 
-        public async Task<string?> GetCurrentMicrophoneDevice()
+        public Task<string?> GetCurrentMicrophoneDevice()
         {
-            return _selectedDeviceNumber.ToString();
+            return Task.FromResult<string?>(_selectedDeviceNumber.ToString());
         }
 
         public async ValueTask DisposeAsync()
@@ -345,6 +358,32 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             catch (Exception ex)
             {
                 Debug.WriteLine($"Error during disposal: {ex}");
+            }
+        }
+
+        public void StartAsync()
+        {
+            try
+            {
+                _waveIn?.StartRecording();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error starting audio client: {ex.Message}");
+                AudioError?.Invoke(this, $"Error starting audio: {ex.Message}");
+            }
+        }
+
+        public void StopAsync()
+        {
+            try
+            {
+                _waveIn?.StopRecording();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error stopping audio client: {ex.Message}");
+                AudioError?.Invoke(this, $"Error stopping audio: {ex.Message}");
             }
         }
     }

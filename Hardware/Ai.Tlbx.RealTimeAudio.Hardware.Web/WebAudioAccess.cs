@@ -218,6 +218,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                     {
                         // No more chunks to process
                         Debug.WriteLine("[WebAudioAccess] All audio chunks processed, queue is empty");
+                        _isPlaying = false;
                         return;
                     }
                 }
@@ -230,8 +231,16 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 // Log audio chunk details
                 Debug.WriteLine($"[WebAudioAccess] Processing audio chunk. Size: {audioData.Length} chars, Sample rate: {sampleRate} Hz");
 
-                // Play the chunk outside the lock
-                await PlayAudioChunk(audioData, sampleRate);
+                try
+                {
+                    // Play the chunk outside the lock
+                    await PlayAudioChunk(audioData, sampleRate);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[WebAudioAccess] Error processing audio chunk: {ex.Message}");
+                    AudioError?.Invoke(this, $"Error playing audio: {ex.Message}");
+                }
             }
         }
 
@@ -389,7 +398,9 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 }
 
                 // Stop any current audio playback
+                Debug.WriteLine("[WebAudioAccess] Stopping current audio playback");
                 await _audioModule.InvokeVoidAsync("stopAudioPlayback");
+                Debug.WriteLine("[WebAudioAccess] Audio playback stopped");
 
                 // Reset playing state
                 lock (_audioLock)
@@ -479,6 +490,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 
         public async Task<string?> GetCurrentMicrophoneDevice()
         {
+            await Task.CompletedTask;
             return _selectedMicrophoneId;
         }
 

@@ -231,4 +231,35 @@ workitems look like this they have a status indicator, a ticket id (naming based
 [x] CODESTYLE-4 Add explicit access modifier (`internal`) to `Program` class in Demo Linux `Program.cs`.
 [x] CODESTYLE-5 Replace `Console.WriteLine` calls with provided logger or `Debug.WriteLine` in `WebAudioAccess.cs`.
 
+# Immediate Audio Stop on Web Demo
+[x] AUDIOSTOP-1 Identify and address buffered audio playback issue in web demo:
+    - Investigate why audio continues to play after stop button is pressed
+    - Determine if the issue is in the web UI, core logic, or hardware abstraction layer
+    - Log buffer state on stop command to diagnose issue
+[x] AUDIOSTOP-2 Enhance IAudioHardwareAccess interface to support immediate stop:
+    - Add method or property to clear audio buffers explicitly (e.g., `ClearBuffers()`)
+    - Update interface documentation to mandate immediate stop behavior
+    - Ensure all implementations can flush or reset playback queues
+[x] AUDIOSTOP-3 Implement buffer clearing in WindowsAudioDevice (Windows):
+    - Add logic to stop playback and clear any queued audio data
+    - Test immediate stop with various buffer states
+    - Log buffer clearing operations for debugging
+[x] AUDIOSTOP-4 Implement buffer clearing in LinuxAudioDevice (Linux):
+    - Use ALSA API to drop pending playback data (e.g., `snd_pcm_drop`)
+    - Ensure playback thread respects immediate stop
+    - Log ALSA buffer operations on stop
+[x] AUDIOSTOP-5 Implement buffer clearing in WebAudioAccess (Web):
+    - Stop Web Audio API playback and clear any scheduled audio buffers
+    - Handle any queued audio data in JavaScript bridge
+    - Log buffer state before and after clearing
+[x] AUDIOSTOP-6 Update OpenAiRealTimeApiAccess to call buffer clearing on stop:
+    - Modify stop logic to invoke the new `ClearBuffers()` method
+    - Ensure stop command propagates to hardware layer immediately
+    - Add logging for stop and clear operations
+[X] AUDIOSTOP-7 Test immediate stop functionality across platforms:
+    - Verify no audio plays after stop in Windows demo
+    - Verify no audio plays after stop in Linux demo
+    - Verify no audio plays after stop in Web demo
+    - Document test results and edge cases
+
 

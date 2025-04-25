@@ -179,6 +179,34 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             }
         }
         
+        private async void btnInterrupt_Click(object sender, EventArgs e)
+        {
+            if (!_isRecording)
+            {
+                return;
+            }
+            
+            try
+            {
+                btnInterrupt.Enabled = false;
+                lblStatus.Text = "Interrupting...";
+                Debug.WriteLine("Interrupting audio session");
+                
+                await _audioService.Interrupt();
+                lblStatus.Text = "Interrupted";
+            }
+            catch (Exception ex)
+            {
+                lblStatus.Text = $"Error interrupting: {ex.Message}";
+                Debug.WriteLine($"Interrupt error: {ex.Message}\nStackTrace: {ex.StackTrace}");
+                MessageBox.Show($"Error interrupting: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                UpdateUIState();
+            }
+        }
+        
         private void UpdateUIState()
         {
             bool isConnecting = _audioService?.IsConnecting ?? false;

@@ -331,6 +331,7 @@
 
         // Don't check for microphone permission in OnInitializedAsync (during prerender)
         // We'll do that in OnAfterRenderAsync instead
+        await Task.CompletedTask;
     }
     
     // Simple property changed handler to detect recording state changes
@@ -362,10 +363,10 @@
             // Check if we have actual device information - actual device labels mean permission is granted
             bool hasRealDeviceNames = mics.Count > 0 && 
                 mics.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
-                
+            
             micPermissionGranted = hasRealDeviceNames;
             Console.WriteLine($"Initial permission check: Permission granted: {micPermissionGranted}, Found {mics.Count} microphones");
-                
+            
             if (micPermissionGranted)
             {
                 // If we got devices with real names, permission is granted
@@ -489,13 +490,18 @@
         InvokeAsync(async () => 
         {
             availableMicrophones = devices;
-            await InvokeAsync(StateHasChanged);
+            await Task.CompletedTask;
+            StateHasChanged();
         });
     }
 
     private void OnConnectionStatusChanged(object? sender, string status)
     {
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(async () => 
+        {
+            await Task.CompletedTask;
+            StateHasChanged();
+        });
     }
 
     private void OnMessageAdded(object? sender, OpenAiChatMessage message)
@@ -619,8 +625,12 @@
 
     private void OnMicrophoneTestStatusChanged(object? sender, string status)
     {
-        micTestStatus = status;
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(async () => 
+        {
+            micTestStatus = status;
+            await Task.CompletedTask;
+            StateHasChanged();
+        });
     }
 
     private void CancelMicrophoneTest()

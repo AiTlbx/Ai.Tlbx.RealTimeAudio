@@ -21,6 +21,7 @@
     <PackageProjectUrl>https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio</PackageProjectUrl>
     <Copyright>Copyright (c) 2025 Johannes Schmidt, TLBX</Copyright>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <NoWarn>NU5104</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

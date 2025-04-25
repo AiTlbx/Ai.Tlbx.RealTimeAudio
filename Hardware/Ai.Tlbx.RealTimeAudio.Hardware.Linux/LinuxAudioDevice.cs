@@ -476,14 +476,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         /// <summary>
         /// Gets the current microphone device identifier.
         /// </summary>
-        public async Task<string?> GetCurrentMicrophoneDevice()
+        public Task<string?> GetCurrentMicrophoneDevice()
         {
             if (!_isInitialized)
             {
-                await InitAudio();
+                InitAudio().Wait();
             }
 
-            return _currentMicrophoneId;
+            return Task.FromResult<string?>(_currentMicrophoneId);
         }
 
         /// <summary>
@@ -763,6 +763,21 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 Log(LogLevel.Info, "Stopping recording");
                 _recordingCts?.Cancel();
                 
+                // Immediately stop the PCM device to ensure no further data is captured
+                if (_captureHandle != IntPtr.Zero)
+                {
+                    int err = AlsaNative.snd_pcm_drop(_captureHandle);
+                    if (err < 0)
+                    {
+                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
+                        Log(LogLevel.Warning, $"Failed to drop capture data: {errorMsg}");
+                    }
+                    else
+                    {
+                        Log(LogLevel.Debug, "Capture data dropped successfully");
+                    }
+                }
+                
                 if (_recordingTask != null)
                 {
                     try
@@ -779,23 +794,23 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 // Stop the PCM device
                 if (_captureHandle != IntPtr.Zero)
                 {
-                    int err = AlsaNative.snd_pcm_drop(_captureHandle);
+                    int err = AlsaNative.snd_pcm_prepare(_captureHandle);
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to drop capture device: {errorMsg}");
+                        Log(LogLevel.Warning, $"Failed to prepare capture device after stopping: {errorMsg}");
                     }
-                    
-                    // Prepare the device for next use
-                    err = AlsaNative.snd_pcm_prepare(_captureHandle);
-                    if (err < 0)
+                    else
                     {
-                        string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to prepare capture device after stop: {errorMsg}");
+                        Log(LogLevel.Debug, "Capture device prepared for next use");
                     }
                 }
-                
+
+                _recordingTask = null;
+                _recordingCts = null;
+                _audioDataHandler = null;
                 _isRecording = false;
+                
                 Log(LogLevel.Info, "Recording stopped successfully");
                 return true;
             }
@@ -804,6 +819,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 string errorMsg = $"Error stopping recording: {ex.Message}";
                 Log(LogLevel.Error, errorMsg);
                 AudioError?.Invoke(this, errorMsg);
+                _isRecording = false;
                 return false;
             }
         }
@@ -982,6 +998,10 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
                         Log(LogLevel.Warning, $"Failed to drop playback: {errorMsg}");
                     }
+                    else
+                    {
+                        Log(LogLevel.Info, "Playback dropped successfully");
+                    }
                     
                     // Prepare the device for future playback
                     err = AlsaNative.snd_pcm_prepare(_playbackHandle);
@@ -992,7 +1012,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     }
                     else
                     {
-                        Log(LogLevel.Info, "Audio queue cleared successfully");
+                        Log(LogLevel.Info, "Audio queue cleared and device prepared successfully");
                     }
                 }
             }
