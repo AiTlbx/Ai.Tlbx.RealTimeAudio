@@ -240,4 +240,15 @@ workitems look like this they have a status indicator, a ticket id (naming based
 [x] AUDIOSTOP-6 Update OpenAiRealTimeApiAccess to call buffer clearing on stop:
 [x] AUDIOSTOP-7 Test immediate stop functionality across platforms:
 
+# Web Audio Quality Improvements (Playback, Mixing, Artefact Reduction)
+[x] WEB-AUDIO-1 Refactor playback pipeline to use a continuous buffer for gapless audio output; ensure chunks are scheduled with no gaps (webAudioAccess.js)
+[x] WEB-AUDIO-2 Implement high-quality upsampling of PCM16 audio to 48kHz using linear or spline interpolation before playback (webAudioAccess.js)
+[x] WEB-AUDIO-3 Add crossfade/overlap logic between audio chunks to mask discontinuities and reduce artefacts (webAudioAccess.js)
+[x] WEB-AUDIO-4 Implement real-time mixing: allow overlapping playback of incoming audio chunks, mixing them into a single output stream (webAudioAccess.js)
+[x] WEB-AUDIO-5 Add underrun detection and recovery: fill buffer underruns with silence or last good sample to avoid glitches (webAudioAccess.js)
+[x] WEB-AUDIO-6 Add smoothing/anti-click windowing at chunk boundaries (fade-in/fade-out, window functions) (webAudioAccess.js)
+[x] WEB-AUDIO-7 Refactor playback to use AudioWorklet for advanced scheduling, mixing, and low-latency output (webAudioAccess.js, audio-processor.js)
+[ ] WEB-AUDIO-8 Add runtime configuration for buffer size, overlap, upsampling method, and diagnostics (webAudioAccess.js)
+
+
 

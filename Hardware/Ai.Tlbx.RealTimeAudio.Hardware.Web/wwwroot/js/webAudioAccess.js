@@ -1,33 +1,33 @@
 ﻿// webAudioAccess.js
 let mediaStream = null;
 let audioWorkletNode = null;
+let playbackWorkletNode = null;
 let dotNetReference = null;
 let isRecording = false;
 let audioContext = null;
 let audioInitialized = false;
 let recordingInterval = null;
-let audioChunks = [];
+let playbackSampleRate = 24000;
 
-// Track active audio sources
-let activeSources = [];
-
-// Utility function to load the audio worklet
-async function loadAudioWorklet() {
+// Utility function to load the audio worklet modules
+async function loadAudioWorkletModules() {
     if (!audioContext) {
         console.error("Cannot load audio worklet: audioContext is null");
         return false;
     }
-    
+
     try {
+        // Ensure paths are correct relative to where the script is loaded (likely index.html)
+        // Adjust path if necessary, e.g., '/js/audio-processor.js' if served from root
         await audioContext.audioWorklet.addModule('./js/audio-processor.js');
-        console.log("AudioWorklet module loaded successfully");
+        console.log("AudioWorklet modules loaded successfully (or already loaded)");
         return true;
     } catch (err) {
-        // Check if error is about module already being loaded
-        if (err.message && err.message.includes('already been added')) {
-            console.log("AudioWorklet module already loaded");
-            return true;
-        }
+         // Check if error is about module already being loaded - this is common and OK
+         if (err.message && (err.message.includes('already been added') || err.message.includes('has been already registered'))) {
+             console.warn("AudioWorklet module loading warning (likely already loaded):", err.message);
+             return true; // Consider it loaded if it was already there
+         }
         console.error("Failed to load AudioWorklet module:", err);
         return false;
     }
@@ -37,17 +37,28 @@ async function loadAudioWorklet() {
 async function initAudioWithUserInteraction() {
     try {
         console.log("Initializing audio with user interaction");
-        
-        // Create AudioContext with the correct sample rate for OpenAI
-        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        console.log("AudioContext created, state:", audioContext.state);
-        
+
+        // Create AudioContext with the correct sample rate for OpenAI/Playback
+        // Check if context already exists and matches rate, reuse if possible
+        if (!audioContext || audioContext.sampleRate !== playbackSampleRate) {
+             if (audioContext) {
+                 await audioContext.close(); // Close existing context if rate mismatches
+             }
+             audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: playbackSampleRate });
+             console.log(`AudioContext created/recreated with sample rate: ${audioContext.sampleRate}`);
+        } else {
+             console.log(`Reusing existing AudioContext with sample rate: ${audioContext.sampleRate}`);
+        }
+
+
+        console.log("AudioContext initial state:", audioContext.state);
+
         // Force resume the AudioContext - this requires user interaction in many browsers
         if (audioContext.state === 'suspended') {
             await audioContext.resume();
             console.log("AudioContext resumed, new state:", audioContext.state);
         }
-        
+
         // Check if browser supports getUserMedia
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error("This browser doesn't support accessing the microphone. Please try Chrome, Firefox, or Edge.");
@@ -56,60 +67,96 @@ async function initAudioWithUserInteraction() {
         // Explicitly request microphone permissions first with a simpler configuration
         console.log("Requesting initial microphone permission...");
         try {
-            const permissionResult = await navigator.permissions.query({ name: 'microphone' });
-            console.log("Microphone permission status:", permissionResult.state);
-            
-            if (permissionResult.state === 'denied') {
-                throw new Error("Microphone permission denied. Please allow microphone access in your browser settings and reload the page.");
-            }
+            // Try getting a dummy stream to ensure permissions are granted *before* enumerating
+            const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            tempStream.getTracks().forEach(track => track.stop()); // Stop the dummy stream immediately
+            console.log("Microphone permission appears granted.");
         } catch (permErr) {
-            console.log("Permission query not supported or failed:", permErr);
-            // Continue anyway as not all browsers support permission API
+            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+                throw new Error("Microphone permission denied. Please allow microphone access in your browser settings and reload the page.");
+            } else if (permErr.name === 'NotFoundError') {
+                 throw new Error("No microphone detected. Please connect a microphone and reload the page.");
+            }
+            else {
+                 console.warn("Error requesting initial mic permission stream:", permErr);
+                 // Attempt to continue, maybe permissions exist from previous session
+            }
         }
-        
-        // Request microphone permission - this shows the permission dialog to the user
-        console.log("Requesting microphone access stream...");
-        const stream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                channelCount: 1,
-                sampleRate: 24000, // Match OpenAI requirement
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            },
-            video: false
-        });
-        
-        console.log("Microphone access granted, received stream with tracks:", stream.getAudioTracks().length);
-        
-        // Check if we actually got audio tracks
-        if (stream.getAudioTracks().length === 0) {
-            throw new Error("No audio tracks received from microphone. Please check your microphone connection.");
+
+
+        // Load the AudioWorklet modules once
+        if (!await loadAudioWorkletModules()) {
+            throw new Error("Failed to load AudioWorklet modules");
         }
-        
-        // Load the AudioWorklet module once
-        if (!await loadAudioWorklet()) {
-            throw new Error("Failed to load AudioWorklet module");
+
+        // --- Setup Playback Worklet Node ---
+        // Close existing node if present
+        if (playbackWorkletNode) {
+            console.log("Disconnecting existing playback worklet node");
+            playbackWorkletNode.disconnect();
+            playbackWorkletNode = null;
         }
-        
-        // Test the microphone by creating a dummy recording
-        const source = audioContext.createMediaStreamSource(stream);
-        const testNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
-        source.connect(testNode);
-        
-        // Wait a moment to ensure everything is initialized
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Clean up the test
-        testNode.disconnect();
-        stream.getTracks().forEach(track => track.stop());
-        
+         try {
+             console.log("Creating PlaybackProcessor node");
+             playbackWorkletNode = new AudioWorkletNode(audioContext, 'playback-processor');
+             playbackWorkletNode.onprocessorerror = (event) => {
+                 console.error('PlaybackProcessor error:', event);
+                 dotNetReference?.invokeMethodAsync('OnAudioError', 'Playback processor error occurred.');
+             };
+             // Connect playback node to destination
+             playbackWorkletNode.connect(audioContext.destination);
+             console.log("PlaybackProcessor node created and connected.");
+         } catch (nodeError) {
+              console.error("Failed to create or connect PlaybackProcessor node:", nodeError);
+              throw new Error(`Failed to initialize playback processor: ${nodeError.message}`);
+         }
+         // ----------------------------------
+
+
+        // Test the microphone by creating a dummy recording setup (optional but good sanity check)
+        try {
+             console.log("Performing microphone initialization test...");
+             const stream = await navigator.mediaDevices.getUserMedia({
+                 audio: {
+                     channelCount: 1,
+                     sampleRate: playbackSampleRate, // Use consistent rate
+                     echoCancellation: true,
+                     noiseSuppression: true,
+                     autoGainControl: true
+                 },
+                 video: false
+             });
+
+             if (stream.getAudioTracks().length === 0) {
+                 throw new Error("No audio tracks received from microphone during test.");
+             }
+
+             const source = audioContext.createMediaStreamSource(stream);
+             // Use the actual recorder processor for the test
+             const testRecordNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
+             source.connect(testRecordNode);
+             testRecordNode.port.onmessage = (event) => { /* Process test data if needed, or ignore */ };
+
+             await new Promise(resolve => setTimeout(resolve, 200)); // Short delay for test
+
+             testRecordNode.disconnect();
+             source.disconnect(); // Disconnect source as well
+             stream.getTracks().forEach(track => track.stop());
+             console.log("Microphone initialization test completed.");
+        } catch(micTestError) {
+             console.error("Microphone initialization test failed:", micTestError);
+             // Decide if this is fatal or just a warning
+             // throw new Error(`Microphone test failed: ${micTestError.message}`);
+             dotNetReference?.invokeMethodAsync('OnAudioError', `Microphone test failed: ${micTestError.message}. Recording might not work.`);
+        }
+
+
         audioInitialized = true;
-        console.log("Audio system fully initialized");
+        console.log("Audio system fully initialized (including playback processor)");
         return true;
     } catch (error) {
         console.error('Audio initialization error:', error);
-        
+
         // Provide more specific error messages based on the error
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
             dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Please allow microphone access in your browser settings and reload the page.');
@@ -120,24 +167,47 @@ async function initAudioWithUserInteraction() {
         } else {
             dotNetReference?.invokeMethodAsync('OnAudioError', `Audio initialization failed: ${error.message}`);
         }
-        
+
         audioInitialized = false;
+        // Cleanup partially initialized resources
+         if (playbackWorkletNode) {
+             playbackWorkletNode.disconnect();
+             playbackWorkletNode = null;
+         }
+        if (audioContext && audioContext.state !== 'closed') {
+            await audioContext.close();
+            audioContext = null;
+        }
         return false;
     }
 }
 
 // Legacy function for compatibility
 async function initAudioPermissions() {
+    console.warn("initAudioPermissions is deprecated, use initAudioWithUserInteraction");
     return await initAudioWithUserInteraction();
 }
 
 // Make sure AudioContext is resumed - must be called after user interaction
 async function ensureAudioContextResumed() {
     if (!audioContext) {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-        console.log("AudioContext created in ensure function, state:", audioContext.state);
+        console.warn("ensureAudioContextResumed called but audioContext is null. Attempting reinitialization.");
+        // Try a lightweight init if context is missing
+         try {
+             audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: playbackSampleRate });
+             await loadAudioWorkletModules(); // Need modules loaded too
+             // Setup playback node again if missing
+              if (!playbackWorkletNode && audioContext.state !== 'closed') {
+                   playbackWorkletNode = new AudioWorkletNode(audioContext, 'playback-processor');
+                   playbackWorkletNode.connect(audioContext.destination);
+              }
+              console.log("AudioContext created/reinitialized in ensure function, state:", audioContext.state);
+         } catch (initErr) {
+              console.error("Failed to reinitialize AudioContext in ensure function:", initErr);
+              return false;
+         }
     }
-    
+
     if (audioContext.state === 'suspended') {
         try {
             console.log("Attempting to resume AudioContext in ensure function");
@@ -145,11 +215,19 @@ async function ensureAudioContextResumed() {
             console.log("AudioContext resumed, new state:", audioContext.state);
         } catch (error) {
             console.error("Failed to resume AudioContext:", error);
+            dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to resume audio context. Please interact with the page (click/tap).');
             return false;
         }
     }
-    
-    return true;
+     // Ensure playback node is connected
+     if (playbackWorkletNode && playbackWorkletNode.context.state === 'running' && !playbackWorkletNode.connected) {
+          try {
+              playbackWorkletNode.connect(audioContext.destination);
+              console.log("Reconnected playback node in ensure function");
+          } catch(e){ console.error("Failed to reconnect playback node:", e); }
+      }
+
+    return audioContext.state === 'running';
 }
 
 // New function to get available microphones
@@ -162,8 +240,13 @@ async function getAvailableMicrophones() {
         try {
             permissionStatus = await navigator.permissions.query({ name: 'microphone' });
             console.log("Microphone permission status:", permissionStatus.state);
+            if (permissionStatus.state === 'denied') {
+                 console.warn("Microphone permission denied by browser setting.");
+                 // Return empty list or throw specific error? Return empty for now.
+                 return [];
+            }
         } catch (err) {
-            console.log("Permission API not supported, will try direct method", err);
+            console.log("Permission API not supported or failed, will try direct method", err);
         }
         
         // Get initial device list
@@ -172,488 +255,405 @@ async function getAvailableMicrophones() {
         // Check if we already have labeled devices (this happens when permission is already granted)
         let hasLabels = devices.some(device => device.kind === 'audioinput' && device.label);
         
-        // If we don't have labels, request permission
-        if (!hasLabels) {
-            console.log("No device labels available, requesting microphone access");
+        // If we don't have labels AND permission wasn't explicitly granted or prompted
+        if (!hasLabels && permissionStatus?.state !== 'granted') {
+            console.log("No device labels available, requesting microphone access to get labels");
             try {
-                // Request microphone access explicitly
+                // Request microphone access explicitly to trigger prompt if needed and get labels
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 
                 // Now we should have permission, get the devices again with labels
                 devices = await navigator.mediaDevices.enumerateDevices();
                 
-                // Stop the stream immediately as we only needed it for permissions
+                // Stop the stream immediately as we only needed it for permissions/labels
                 stream.getTracks().forEach(track => track.stop());
-                console.log("Microphone access granted, device labels should be available now");
-            } catch (permissionErr) {
-                console.warn("Could not get microphone access:", permissionErr);
-                // Continue anyway, but device labels will likely be empty
+            } catch (err) {
+                // Handle potential errors during permission request (e.g., user denies)
+                console.error("Error requesting microphone access for device labels:", err);
+                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+                    dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Cannot list microphones.');
+                 } else {
+                     dotNetReference?.invokeMethodAsync('OnAudioError', `Error getting microphone list: ${err.message}`);
+                 }
+                return []; // Return empty list on error
             }
-        } else {
-            console.log("Device labels already available, permission already granted");
         }
         
-        // Filter for audio input devices
-        let inputDevices = devices.filter(device => device.kind === 'audioinput');
+        // Filter for audio input devices and map to the expected format
+        const microphones = devices
+            .filter(device => device.kind === 'audioinput')
+            .map(device => ({
+                id: device.deviceId,
+                name: device.label || `Microphone ${device.deviceId.substring(0, 8)}` // Provide a fallback name
+            }));
         
-        // Group similar devices (same physical device with different roles in Windows)
-        const physicalDevices = new Map();
-        
-        // Extract the base name of the device (without the "Default -" or "Communications -" prefix)
-        function getBaseDeviceName(fullName) {
-            // Remove any "Default - " or "Communications - " prefix
-            let baseName = fullName.replace(/^(Default - |Communications - )/, '');
-            return baseName.trim();
-        }
-        
-        // First pass: identify physical devices by their base name
-        inputDevices.forEach(device => {
-            if (!device.label) return; // Skip devices without labels
-            
-            const baseName = getBaseDeviceName(device.label);
-            if (!physicalDevices.has(baseName)) {
-                physicalDevices.set(baseName, []);
-            }
-            physicalDevices.get(baseName).push(device);
-        });
-        
-        // Create the final list of devices, picking the most relevant one from each group
-        let microphones = [];
-        
-        // Process each physical device group
-        physicalDevices.forEach((deviceList, baseName) => {
-            // Sort to prioritize default devices first
-            deviceList.sort((a, b) => {
-                // Default device first
-                if (a.label.startsWith('Default')) return -1;
-                if (b.label.startsWith('Default')) return 1;
-                
-                // Then communications device
-                if (a.label.startsWith('Communications')) return -1;
-                if (b.label.startsWith('Communications')) return 1;
-                
-                return 0;
-            });
-            
-            // If we have multiple devices for the same physical device, show just the default one
-            // unless we don't have a default for this device
-            const defaultDevice = deviceList.find(d => d.label.startsWith('Default'));
-            
-            if (defaultDevice) {
-                // Only add the default one
-                microphones.push({
-                    id: defaultDevice.deviceId,
-                    name: defaultDevice.label,
-                    isDefault: true,
-                    physicalDevice: baseName
-                });
-            } else {
-                // No default device in this group, add the first one
-                const device = deviceList[0];
-                microphones.push({
-                    id: device.deviceId,
-                    name: device.label,
-                    isDefault: false,
-                    physicalDevice: baseName
-                });
-            }
-        });
-        
-        // Sort one more time to ensure default devices are first
-        microphones.sort((a, b) => {
-            if (a.isDefault && !b.isDefault) return -1;
-            if (!a.isDefault && b.isDefault) return 1;
-            return 0;
-        });
-        
-        console.log(`Found ${microphones.length} physical microphone devices:`, microphones);
+        console.log("Available microphones:", microphones);
         return microphones;
     } catch (error) {
-        console.error("Error getting available microphones:", error);
-        dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to get microphone list: ${error.message}`);
-        return [];
+        console.error('Error getting available microphones:', error);
+        dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to enumerate microphones: ${error.message}`);
+        return []; // Return empty list on error
     }
 }
 
+// Helper function to extract base device name
+function getBaseDeviceName(fullName) {
+    return fullName; // Simplification for now
+}
+
+// --- Recording ---
 async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
+    console.log(`Attempting to start recording with interval ${intervalMs}ms, deviceId: ${deviceId}`);
+    if (!(await ensureAudioContextResumed())) { // Ensure context is running first!
+         console.error("Cannot start recording: AudioContext not running.");
+         dotNetReference?.invokeMethodAsync('OnAudioError', 'Cannot start recording: AudioContext is not active. Please interact with the page.');
+         return false;
+     }
+    if (!audioInitialized) {
+        console.error("Cannot start recording: Audio system not initialized.");
+        dotNetReference?.invokeMethodAsync('OnAudioError', 'Audio system not initialized. Please initialize first.');
+        return false; // Should have been initialized via user interaction
+    }
+    if (isRecording) {
+        console.warn("Recording already in progress.");
+        return true; // Or false? Indicate it's already running.
+    }
+
+    dotNetReference = dotNetObj; // Store reference
+
     try {
-        console.log("Starting recording process");
-        
-        if (isRecording) {
-            console.warn("Recording already in progress, stopping first");
-            await stopRecording();
+        console.log(`Attempting to get media stream for device: ${deviceId || 'default'}`);
+        const constraints = {
+            audio: {
+                channelCount: 1,
+                sampleRate: playbackSampleRate, // Use consistent rate
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+                ...(deviceId && { deviceId: { exact: deviceId } }) // Apply specific device ID if provided
+            },
+            video: false
+        };
+        mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        console.log("Media stream obtained successfully.");
+
+        // Recreate recorder worklet node if needed (e.g., after context recreation)
+        if (!audioWorkletNode || audioWorkletNode.context !== audioContext) {
+             if (audioWorkletNode) {
+                 audioWorkletNode.disconnect(); // Disconnect old one if context changed
+             }
+             console.log("Creating AudioRecorderProcessor node");
+             audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
+             audioWorkletNode.onprocessorerror = (e) => console.error("Recorder processor error", e);
+        } else {
+            // Ensure it's active if reusing
+             audioWorkletNode.port.postMessage({ command: 'start' }); // Add a 'start' command if needed by processor
         }
-        
-        // Store the .NET reference for callbacks
-        dotNetReference = dotNetObj;
-        console.log("dotNetReference set:", dotNetObj ? "valid object" : "null");
-        
-        // Make sure audio is initialized
-        if (!audioInitialized) {
-            console.log("Audio not initialized, initializing now");
-            if (!await initAudioWithUserInteraction()) {
-                console.error("Failed to initialize audio");
-                dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to initialize audio. Please check microphone permissions and try again.');
-                return false;
-            }
-        }
-        
-        // Ensure AudioContext is in running state
-        if (!await ensureAudioContextResumed()) {
-            console.error("Failed to resume AudioContext");
-            dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to resume audio context. Please reload the page and try again.');
-            return false;
-        }
-        
-        console.log("Requesting microphone access");
-        try {
-            // Create constraints for getUserMedia
-            const constraints = {
-                audio: {
-                    channelCount: 1,
-                    sampleRate: 24000, // Match OpenAI requirement
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                },
-                video: false
-            };
-            
-            // If deviceId was provided, add it to the constraints
-            if (deviceId) {
-                console.log(`Using specific device ID: ${deviceId}`);
-                constraints.audio.deviceId = { exact: deviceId };
-            } else {
-                console.log("No device ID specified, using default microphone");
-            }
-            
-            // Get microphone stream with specific parameters
-            mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (err) {
-            console.error("Microphone access error:", err);
-            
-            // Provide user-friendly error messages based on the error
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Please allow microphone access in your browser settings and reload the page.');
-            } else if (err.name === 'NotFoundError') {
-                dotNetReference?.invokeMethodAsync('OnAudioError', 'No microphone detected. Please connect a microphone and reload the page.');
-            } else if (err.name === 'OverconstrainedError' || err.name === 'ConstraintNotSatisfiedError') {
-                dotNetReference?.invokeMethodAsync('OnAudioError', `The selected microphone is not available. Please choose a different microphone.`);
-            } else {
-                dotNetReference?.invokeMethodAsync('OnAudioError', `Microphone access error: ${err.message}`);
-            }
-            
-            return false;
-        }
-        
-        console.log("Microphone access granted, creating processing pipeline");
-        
-        // Ensure the audio-processor worklet is loaded using our utility function
-        if (!await loadAudioWorklet()) {
-            dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to load audio processing module.');
-            throw new Error("Failed to load AudioWorklet module");
-        }
-        
-        // Create a MediaStreamSource from the stream
-        const source = audioContext.createMediaStreamSource(mediaStream);
-        
-        // Create an AudioWorkletNode for processing
-        try {
-            audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
-            console.log("AudioWorkletNode created successfully");
-        } catch (err) {
-            console.error("Failed to create AudioWorkletNode:", err);
-            dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to create audio processing node: ${err.message}`);
-            throw err; // Re-throw to be caught by the outer try-catch
-        }
-        
-        // Set up message handling from the worklet with more detailed logging
+
+
+        // Setup message handling from the recorder worklet
         audioWorkletNode.port.onmessage = (event) => {
             if (event.data.audioData) {
-                audioChunks.push(event.data.audioData);
-                // Log occasionally to avoid flooding the console
-                if (audioChunks.length % 10 === 0) {
-                    console.log(`Received audio chunk: ${audioChunks.length} chunks collected`);
+                // Convert Int16Array buffer back to Base64 string
+                const pcm16Data = event.data.audioData; // This is Int16Array from processor
+                const buffer = pcm16Data.buffer; // Get ArrayBuffer
+                const bytes = new Uint8Array(buffer);
+                let binary = '';
+                for (let i = 0; i < bytes.byteLength; i++) {
+                    binary += String.fromCharCode(bytes[i]);
                 }
-            } else {
-                console.warn("Received message from worklet without audioData:", event.data);
+                const base64Audio = btoa(binary);
+                // console.log(`[js] Sending audio chunk: ${base64Audio.substring(0, 30)}...`);
+                dotNetReference?.invokeMethodAsync('OnAudioDataAvailable', base64Audio);
             }
         };
-        
-        // Connect the nodes with error handling
-        try {
-            source.connect(audioWorkletNode);
-            audioWorkletNode.connect(audioContext.destination);
-            console.log("Audio processing pipeline connected");
-        } catch (err) {
-            console.error("Failed to connect audio nodes:", err);
-            dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to set up audio processing: ${err.message}`);
-            throw err;
-        }
-        
-        // Set up interval to send audio chunks
-        audioChunks = []; // Clear any previous chunks
-        recordingInterval = setInterval(() => {
-            if (audioChunks.length > 0) {
-                sendAudioChunk();
-            }
-        }, intervalMs);
-        
+
+        const source = audioContext.createMediaStreamSource(mediaStream);
+        source.connect(audioWorkletNode);
+        // Do NOT connect recorder worklet to destination
+        // audioWorkletNode.connect(audioContext.destination); // NO! This would cause feedback
+
         isRecording = true;
-        console.log("Recording started successfully");
+        console.log("Recording started.");
+        dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', true); // Notify C#
         return true;
+
     } catch (error) {
         console.error('Error starting recording:', error);
-        await stopRecording();
-        return false;
-    }
-}
+        isRecording = false;
+         dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', false); // Notify C#
+         // Provide specific error messages
+         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+             dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Cannot start recording.');
+         } else if (error.name === 'NotFoundError' || error.name === 'OverconstrainedError') {
+             dotNetReference?.invokeMethodAsync('OnAudioError', `Selected microphone (ID: ${deviceId}) not found or constraints unmet. Please check selection or hardware.`);
+         } else if (error.name === 'NotReadableError') {
+              dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone is busy or unreadable. Check if another app is using it.');
+         } else {
+             dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to start recording: ${error.message}`);
+         }
 
-// Sends collected audio chunks to .NET
-function sendAudioChunk() {
-    try {
-        // First check if we're still recording
-        if (!isRecording) {
-            console.log("Recording stopped, not sending audio chunks");
-            audioChunks = []; // Clear any remaining chunks
-            return;
-        }
-        
-        if (!dotNetReference) {
-            console.error("Cannot send audio chunk: dotNetReference is null or undefined");
-            return;
-        }
-        
-        if (audioChunks.length === 0) {
-            console.warn("No audio chunks to send");
-            return;
-        }
-        
-        // Combine all chunks into a single Int16Array
-        let totalLength = 0;
-        for (const chunk of audioChunks) {
-            totalLength += chunk.length;
-        }
-        
-        const combinedChunk = new Int16Array(totalLength);
-        let offset = 0;
-        
-        for (const chunk of audioChunks) {
-            combinedChunk.set(chunk, offset);
-            offset += chunk.length;
-        }
-        
-        // Convert to Uint8Array for base64 encoding
-        const uint8Array = new Uint8Array(combinedChunk.buffer);
-        
-        // Convert to base64
-        let binary = '';
-        for (let i = 0; i < uint8Array.length; i++) {
-            binary += String.fromCharCode(uint8Array[i]);
-        }
-        const base64Data = btoa(binary);
-        
-        // Send to .NET with proper error handling
-        dotNetReference.invokeMethodAsync('ReceiveAudioData', base64Data)
-            .then(() => {
-                // Successfully invoked the method                
-            })
-            .catch(error => {
-                console.error("Failed to invoke ReceiveAudioData method:", error);
-                // Try to log details about the dotNetReference
-                console.error("dotNetReference details:", 
-                    JSON.stringify({
-                        type: typeof dotNetReference,
-                        hasInvokeMethod: dotNetReference && typeof dotNetReference.invokeMethodAsync === 'function',
-                        hasReceiveAudioData: dotNetReference && dotNetReference.__dotNetObject && typeof dotNetReference.__dotNetObject.ReceiveAudioData === 'function'
-                    }));
-            });
-        
-        // Clear the chunks
-        audioChunks = [];
-    } catch (error) {
-        console.error('Error sending audio chunk:', error);
-    }
-}
-
-async function stopRecording() {
-    try {
-        console.log("Stopping recording");
-        
-        // Clear the interval
-        if (recordingInterval) {
-            clearInterval(recordingInterval);
-            recordingInterval = null;
-        }
-        
-        // Send a stop message to the worklet processor
-        if (audioWorkletNode) {
-            try {
-                // Tell the processor to stop
-                audioWorkletNode.port.postMessage({ command: 'stop' });
-                console.log("Sent stop command to audio processor");
-                
-                // Give it a moment to process the message
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Now disconnect
-                audioWorkletNode.disconnect();
-                console.log("Disconnected audioWorkletNode");
-                audioWorkletNode = null;
-            } catch (error) {
-                console.error("Error stopping audio worklet:", error);
-            }
-        }
-        
-        // Stop all tracks in the media stream
+        // Clean up partial setup
         if (mediaStream) {
-            mediaStream.getTracks().forEach(track => {
-                track.stop();
-                console.log("Stopped media track:", track.kind);
-            });
+            mediaStream.getTracks().forEach(track => track.stop());
             mediaStream = null;
         }
-        
-        // Clear other variables
-        audioChunks = [];
-        isRecording = false;
-        
-        console.log("Recording stopped successfully");
-        return true;
-    } catch (error) {
-        console.error('Error stopping recording:', error);
+        // Don't null out audioWorkletNode here, it might be needed later
         return false;
     }
 }
 
-/**
- * Plays a base64 encoded PCM 16-bit audio chunk
- * @param {string} base64Audio - Base64 encoded PCM 16-bit audio data
- * @param {number} sampleRate - Sample rate of the audio (default: 24000)
- * @returns {Promise<void>}
- */
-async function playAudio(base64Audio, sampleRate = 24000) {
-    try {
-        // Validate input
-        if (!base64Audio || base64Audio.length === 0) {            
-            return Promise.resolve(); // Nothing to play
-        }
-        
-        // Make sure we have an AudioContext
-        if (!audioContext) {            
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        }
-        
-        // Resume the audio context if it's suspended
-        if (audioContext.state === 'suspended') 
-        {            
-            await audioContext.resume();
-        }
+// --- Stop Recording ---
+async function stopRecording() {
+    console.log("Attempting to stop recording.");
+    if (!isRecording) {
+        console.warn("Recording not in progress.");
+        return;
+    }
 
-        // Decode the base64 string to binary data        
-        let binaryString;
-        try {
-            binaryString = atob(base64Audio);
-        } catch (e) {
-            console.error('[playAudio] Failed to decode base64 data:', e);
-            return Promise.reject(new Error('Invalid base64 data'));
-        }
-        
-        const len = binaryString.length;        
-        
+    isRecording = false; // Set flag immediately
+
+     // Signal the worklet processor to stop processing new audio
+     if (audioWorkletNode) {
+         console.log("Sending stop command to recorder worklet.");
+         try {
+              audioWorkletNode.port.postMessage({ command: 'stop' });
+              // Optional: Disconnect immediately? Or let it process remaining buffer?
+              // audioWorkletNode.disconnect();
+         } catch(e) { console.error("Error sending stop message to recorder worklet:", e); }
+
+     }
+
+    // Stop the media stream tracks
+    if (mediaStream) {
+        console.log("Stopping media stream tracks.");
+        mediaStream.getTracks().forEach(track => track.stop());
+        mediaStream = null;
+    } else {
+        console.warn("stopRecording called but mediaStream was already null.");
+    }
+
+
+    // Clear interval if it was used (should not be with worklet)
+    if (recordingInterval) {
+        clearInterval(recordingInterval);
+        recordingInterval = null;
+    }
+
+     // audioChunks = []; // Clear any old chunks if array still exists
+
+    console.log("Recording stopped.");
+    dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', false); // Notify C#
+}
+
+// --- Audio Playback ---
+
+// Function to convert Base64 PCM16 string to Float32Array [-1.0, 1.0]
+function pcm16Base64ToFloat32(base64Audio) {
+    try {
+        const binaryString = atob(base64Audio);
+        const len = binaryString.length;
         const bytes = new Uint8Array(len);
         for (let i = 0; i < len; i++) {
             bytes[i] = binaryString.charCodeAt(i);
         }
-        
-        // Convert to Int16Array (PCM 16-bit)
-        const int16Array = new Int16Array(bytes.buffer);        
-        
-        // Convert Int16Array to Float32Array for Web Audio API
-        const float32Array = new Float32Array(int16Array.length);
-        for (let i = 0; i < int16Array.length; i++) {
-            // Convert from Int16 (-32768 to 32767) to Float32 (-1.0 to 1.0)
-            float32Array[i] = int16Array[i] / 32768.0;
+
+        // Assuming the byte stream is little-endian PCM16
+        const pcm16 = new Int16Array(bytes.buffer);
+        const float32 = new Float32Array(pcm16.length);
+
+        for (let i = 0; i < pcm16.length; i++) {
+            float32[i] = pcm16[i] / 32768.0; // Normalize to [-1.0, 1.0)
         }
-        
-        // Create an audio buffer        
-        const audioBuffer = audioContext.createBuffer(1, float32Array.length, sampleRate);
-        
-        // Fill the buffer with our audio data
-        audioBuffer.getChannelData(0).set(float32Array);
-        
-        // Create a buffer source node
-        const source = audioContext.createBufferSource();
-        source.buffer = audioBuffer;
-        
-        // Connect to the audio output
-        source.connect(audioContext.destination);
-        
-        // Add to active sources
-        activeSources.push(source);        
-        
-        // Remove from active sources when done
-        source.onended = () => {
-            const index = activeSources.indexOf(source);
-            if (index !== -1) {
-                activeSources.splice(index, 1);                
+        return float32;
+    } catch (error) {
+        console.error("Error decoding/converting Base64 PCM16 audio:", error);
+        return null;
+    }
+}
+
+// Main function to play audio using the worklet
+async function playAudio(base64Audio, sampleRate = 24000) {
+     // console.log(`[js] Received playAudio request, sampleRate: ${sampleRate}, data: ${base64Audio.substring(0,30)}...`);
+
+     // 1. Ensure AudioContext is running and playback node exists
+     if (!(await ensureAudioContextResumed())) {
+         console.error("Cannot play audio: AudioContext not running.");
+          dotNetReference?.invokeMethodAsync('OnAudioError', 'Cannot play audio: AudioContext is not active. Please interact with the page.');
+         return false; // Indicate failure
+     }
+      if (!playbackWorkletNode) {
+         console.error("Cannot play audio: Playback worklet node not initialized.");
+         dotNetReference?.invokeMethodAsync('OnAudioError', 'Playback system not initialized.');
+         // Attempt re-initialization? Risky without user interaction context.
+         // await initAudioWithUserInteraction(); // Be careful calling this here
+          return false;
+     }
+
+     // 2. Validate Sample Rate (Currently handled by assuming 24kHz input matches context)
+     if (sampleRate !== audioContext.sampleRate) {
+         console.warn(`Audio sample rate mismatch: Input is ${sampleRate}Hz, Context is ${audioContext.sampleRate}Hz. Audio quality may be affected. Implement resampling if needed.`);
+         // TODO: Implement resampling here if needed (e.g., using OfflineAudioContext or a library)
+         // For now, we proceed, but quality might be bad if rates differ significantly.
+     }
+
+     // 3. Decode Base64 and Convert PCM16 to Float32
+     const float32Audio = pcm16Base64ToFloat32(base64Audio);
+     if (!float32Audio) {
+         console.error("Failed to decode audio data.");
+         dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to decode received audio data.');
+         return false;
+     }
+      // console.log(`[js] Decoded ${float32Audio.length} samples.`);
+
+     // 4. Send data to the PlaybackProcessor
+     try {
+         // Send ArrayBuffer for efficiency - transfer ownership
+         playbackWorkletNode.port.postMessage({ audioData: float32Audio.buffer }, [float32Audio.buffer]);
+         // console.log("[js] Sent audio data to PlaybackProcessor.");
+         return true; // Indicate success
+     } catch (error) {
+         console.error("Error sending audio data to PlaybackProcessor:", error);
+         dotNetReference?.invokeMethodAsync('OnAudioError', `Error sending audio data for playback: ${error.message}`);
+         return false; // Indicate failure
+     }
+}
+
+// Function to stop audio playback and clear buffers
+async function stopAudioPlayback() {
+    console.log("Attempting to stop audio playback.");
+
+    if (!audioContext || !playbackWorkletNode) {
+        console.warn("Cannot stop playback: Audio context or playback node not initialized.");
+        return;
+    }
+
+    // Send 'clear' message to the worklet to immediately stop and clear its buffer
+    try {
+        console.log("Sending 'clear' command to PlaybackProcessor.");
+        playbackWorkletNode.port.postMessage({ command: 'clear' });
+    } catch (error) {
+        console.error("Error sending 'clear' command to PlaybackProcessor:", error);
+    }
+
+    // Note: The PlaybackProcessor should handle stopping itself when it receives 'clear'
+    // or when its buffer runs dry after a 'stop' command (if we used 'stop' instead of 'clear').
+    // We don't need to manage individual AudioBufferSourceNodes anymore.
+
+    console.log("Playback stop requested.");
+}
+
+// --- Microphone Testing --- (Optional - Adapt if needed)
+// This likely needs adjustment if it relied on the old playback mechanism.
+// For now, assume it's not the primary focus. If a mic test UI exists,
+// it might need to pipe recorder output directly back to the playback worklet.
+
+// Example: A simple mic test function might look like this:
+let isMicTesting = false;
+let micTestSource = null;
+let micTestRecorderNode = null;
+let micTestPlaybackNode = null; // Could reuse the main playback node
+
+async function startMicTest() {
+    if (!(await ensureAudioContextResumed())) return;
+    if (!audioInitialized || !playbackWorkletNode) {
+         console.error("Cannot start mic test: Audio system not ready.");
+         return;
+    }
+     if (isMicTesting) return;
+
+     console.log("Starting mic test loopback.");
+     isMicTesting = true;
+
+     try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { /* constraints */ } });
+        micTestSource = audioContext.createMediaStreamSource(stream);
+
+        // Recorder Node (can reuse main one if not recording, or create temp)
+        micTestRecorderNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
+        micTestRecorderNode.port.onmessage = (event) => {
+            if (event.data.audioData) {
+                // Convert Int16 to Float32
+                const pcm16 = event.data.audioData;
+                const float32 = new Float32Array(pcm16.length);
+                for(let i=0; i<pcm16.length; i++) float32[i] = pcm16[i] / 32768.0;
+                // Send to playback worklet
+                 if (playbackWorkletNode) {
+                     playbackWorkletNode.port.postMessage({ audioData: float32.buffer }, [float32.buffer]);
+                 }
             }
         };
-        
-        // Play the audio
-        source.start();
 
-        // Return a promise that resolves when the audio finishes playing
-        return new Promise(resolve => {
-            source.onended = () => {                
-                resolve();
-                // Make sure to remove from active sources
-                const index = activeSources.indexOf(source);
-                if (index !== -1) {
-                    activeSources.splice(index, 1);
-                }
-            };
-        });
-    } catch (error) {
-        throw new Error('Failed to play audio: ' + error.message);
-    }
+        micTestSource.connect(micTestRecorderNode);
+        // DO NOT connect micTestRecorderNode directly to destination
+
+     } catch(err) {
+         console.error("Mic test start failed:", err);
+         stopMicTest(); // Clean up
+     }
 }
 
-/**
- * Stops all currently playing audio
- * Used when the user interrupts the AI
- */
-async function stopAudioPlayback() {
-    try {
-        console.log(`Stopping ${activeSources.length} active audio sources`);
-        
-        // Stop all active audio sources
-        for (const source of activeSources) {
-            try {
-                source.stop();
-            } catch (e) {
-                console.warn("Error stopping audio source:", e);
-            }
-        }
-        
-        // Clear the array
-        activeSources = [];        
-        
-        return true;
-    } catch (error) {
-        console.error('Error stopping audio playback:', error);
-        return false;
-    }
+function stopMicTest() {
+     if (!isMicTesting) return;
+     console.log("Stopping mic test loopback.");
+     isMicTesting = false;
+
+     if (micTestRecorderNode) {
+         micTestRecorderNode.port.postMessage({ command: 'stop' }); // Tell processor to stop
+         micTestRecorderNode.disconnect();
+         micTestRecorderNode = null;
+     }
+     if (micTestSource) {
+         micTestSource.mediaStream.getTracks().forEach(track => track.stop());
+         micTestSource.disconnect();
+         micTestSource = null;
+     }
+      // Tell playback node to clear any test audio
+      if (playbackWorkletNode) {
+         playbackWorkletNode.port.postMessage({ command: 'clear' });
+      }
 }
 
-// Export the functions
-export {
-    initAudioPermissions,
+// Function called by Blazor to set the .NET object reference
+function setDotNetReference(dotNetRef) {
+    dotNetReference = dotNetRef;
+    console.log("DotNet reference set.");
+}
+
+// Clean up function (optional but good practice)
+function cleanupAudio() {
+     console.log("Cleaning up audio resources.");
+     stopRecording();
+     stopAudioPlayback();
+     stopMicTest(); // Ensure mic test is stopped
+
+     if (playbackWorkletNode) {
+         playbackWorkletNode.disconnect();
+         playbackWorkletNode = null;
+     }
+      if (audioWorkletNode) { // Recorder node
+         audioWorkletNode.disconnect();
+         audioWorkletNode = null;
+     }
+
+     if (audioContext && audioContext.state !== 'closed') {
+         audioContext.close().then(() => console.log("AudioContext closed."));
+         audioContext = null;
+     }
+     audioInitialized = false;
+     dotNetReference = null;
+}
+
+// Expose functions to global scope or Blazor interop
+window.audioInterop = {
     initAudioWithUserInteraction,
-    ensureAudioContextResumed,
+    getAvailableMicrophones,
     startRecording,
     stopRecording,
     playAudio,
     stopAudioPlayback,
-    getAvailableMicrophones
-}
+    setDotNetReference,
+    startMicTest, // Expose if needed
+    stopMicTest,  // Expose if needed
+    cleanupAudio // Expose if needed
+};
