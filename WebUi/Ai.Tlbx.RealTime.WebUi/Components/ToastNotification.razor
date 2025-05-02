@@ -1,0 +1,115 @@
+@page "/toast"
+@implements IDisposable
+
+@if (IsVisible)
+{
+    <div class="toast-container @($"toast-{Type.ToString().ToLower()}")">
+        <div class="toast-content">
+            <div class="toast-header">
+                <span>@Title</span>
+                <button @onclick="HideAsync" class="toast-close">&times;</button>
+            </div>
+            <div class="toast-body">
+                @Message
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    public enum ToastType { Info, Success, Warning, Error }
+
+    private string _message = string.Empty;
+    private string _title = string.Empty;
+    private ToastType _type = ToastType.Info;
+    private bool _isVisible = false;
+    private Timer? _autoHideTimer;
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+
+    [Parameter] public int AutoHideMilliseconds { get; set; } = 5000;
+
+    public bool IsVisible => _isVisible;
+    public string Message => _message;
+    public string Title => _title;
+    public ToastType Type => _type;
+
+    /// <summary>
+    /// Shows a toast notification. For thread safety, prefer using ShowAsync instead.
+    /// </summary>
+    public void Show(string message, string title = "", ToastType type = ToastType.Info)
+    {
+        // This is kept for backwards compatibility, but ShowAsync is preferred
+        InvokeAsync(() => ShowInternalAsync(message, title, type));
+    }
+
+    /// <summary>
+    /// Shows a toast notification with proper thread safety.
+    /// </summary>
+    public async Task ShowAsync(string message, string title = "", ToastType type = ToastType.Info)
+    {
+        await InvokeAsync(() => ShowInternalAsync(message, title, type));
+    }
+
+    private async Task ShowInternalAsync(string message, string title, ToastType type)
+    {
+        try
+        {
+            await _semaphore.WaitAsync();
+
+            _message = message;
+            _title = title;
+            _type = type;
+            _isVisible = true;
+
+            // Reset any existing auto-hide timer
+            _autoHideTimer?.Dispose();
+            
+            // Start auto-hide timer if enabled
+            if (AutoHideMilliseconds > 0)
+            {
+                _autoHideTimer = new Timer(async _ => 
+                {
+                    await HideAsync();
+                }, null, AutoHideMilliseconds, Timeout.Infinite);
+            }
+            
+            StateHasChanged();
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    /// <summary>
+    /// Hides the toast. For thread safety, prefer using HideAsync instead.
+    /// </summary>
+    public void Hide()
+    {
+        InvokeAsync(HideAsync);
+    }
+
+    /// <summary>
+    /// Hides the toast with proper thread safety.
+    /// </summary>
+    public async Task HideAsync()
+    {
+        try
+        {
+            await _semaphore.WaitAsync();
+            
+            _isVisible = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        finally
+        {
+            _semaphore.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        _autoHideTimer?.Dispose();
+        _semaphore.Dispose();
+    }
+} 

@@ -20,9 +20,3 @@ FOR /R %%X IN (bin,obj) DO (
     )
 )
 
-:: DotNet Wiederherstellung
-dotnet restore
-dotnet restore
-
-echo.
-echo Script erfolgreich ausgefuehrt.

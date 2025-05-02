@@ -8,6 +8,7 @@ let audioContext = null;
 let audioInitialized = false;
 let recordingInterval = null;
 let playbackSampleRate = 24000;
+let playbackNodeConnected = false;
 
 // Utility function to load the audio worklet modules
 async function loadAudioWorkletModules() {
@@ -15,7 +16,7 @@ async function loadAudioWorkletModules() {
         console.error("Cannot load audio worklet: audioContext is null");
         return false;
     }
-
+    
     try {
         // Ensure paths are correct relative to where the script is loaded (likely index.html)
         // Adjust path if necessary, e.g., '/js/audio-processor.js' if served from root
@@ -27,7 +28,7 @@ async function loadAudioWorkletModules() {
          if (err.message && (err.message.includes('already been added') || err.message.includes('has been already registered'))) {
              console.warn("AudioWorklet module loading warning (likely already loaded):", err.message);
              return true; // Consider it loaded if it was already there
-         }
+        }
         console.error("Failed to load AudioWorklet module:", err);
         return false;
     }
@@ -37,7 +38,7 @@ async function loadAudioWorkletModules() {
 async function initAudioWithUserInteraction() {
     try {
         console.log("Initializing audio with user interaction");
-
+        
         // Create AudioContext with the correct sample rate for OpenAI/Playback
         // Check if context already exists and matches rate, reuse if possible
         if (!audioContext || audioContext.sampleRate !== playbackSampleRate) {
@@ -52,13 +53,13 @@ async function initAudioWithUserInteraction() {
 
 
         console.log("AudioContext initial state:", audioContext.state);
-
+        
         // Force resume the AudioContext - this requires user interaction in many browsers
         if (audioContext.state === 'suspended') {
             await audioContext.resume();
             console.log("AudioContext resumed, new state:", audioContext.state);
         }
-
+        
         // Check if browser supports getUserMedia
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error("This browser doesn't support accessing the microphone. Please try Chrome, Firefox, or Edge.");
@@ -105,6 +106,7 @@ async function initAudioWithUserInteraction() {
              };
              // Connect playback node to destination
              playbackWorkletNode.connect(audioContext.destination);
+             playbackNodeConnected = true;
              console.log("PlaybackProcessor node created and connected.");
          } catch (nodeError) {
               console.error("Failed to create or connect PlaybackProcessor node:", nodeError);
@@ -116,18 +118,18 @@ async function initAudioWithUserInteraction() {
         // Test the microphone by creating a dummy recording setup (optional but good sanity check)
         try {
              console.log("Performing microphone initialization test...");
-             const stream = await navigator.mediaDevices.getUserMedia({
-                 audio: {
-                     channelCount: 1,
+        const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
                      sampleRate: playbackSampleRate, // Use consistent rate
-                     echoCancellation: true,
-                     noiseSuppression: true,
-                     autoGainControl: true
-                 },
-                 video: false
-             });
-
-             if (stream.getAudioTracks().length === 0) {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            },
+            video: false
+        });
+        
+        if (stream.getAudioTracks().length === 0) {
                  throw new Error("No audio tracks received from microphone during test.");
              }
 
@@ -150,13 +152,13 @@ async function initAudioWithUserInteraction() {
              dotNetReference?.invokeMethodAsync('OnAudioError', `Microphone test failed: ${micTestError.message}. Recording might not work.`);
         }
 
-
+        
         audioInitialized = true;
         console.log("Audio system fully initialized (including playback processor)");
         return true;
     } catch (error) {
         console.error('Audio initialization error:', error);
-
+        
         // Provide more specific error messages based on the error
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
             dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Please allow microphone access in your browser settings and reload the page.');
@@ -167,7 +169,7 @@ async function initAudioWithUserInteraction() {
         } else {
             dotNetReference?.invokeMethodAsync('OnAudioError', `Audio initialization failed: ${error.message}`);
         }
-
+        
         audioInitialized = false;
         // Cleanup partially initialized resources
          if (playbackWorkletNode) {
@@ -207,7 +209,7 @@ async function ensureAudioContextResumed() {
               return false;
          }
     }
-
+    
     if (audioContext.state === 'suspended') {
         try {
             console.log("Attempting to resume AudioContext in ensure function");
@@ -220,9 +222,10 @@ async function ensureAudioContextResumed() {
         }
     }
      // Ensure playback node is connected
-     if (playbackWorkletNode && playbackWorkletNode.context.state === 'running' && !playbackWorkletNode.connected) {
+     if (playbackWorkletNode && playbackWorkletNode.context.state === 'running' && !playbackNodeConnected) {
           try {
               playbackWorkletNode.connect(audioContext.destination);
+              playbackNodeConnected = true;
               console.log("Reconnected playback node in ensure function");
           } catch(e){ console.error("Failed to reconnect playback node:", e); }
       }
@@ -283,7 +286,7 @@ async function getAvailableMicrophones() {
         const microphones = devices
             .filter(device => device.kind === 'audioinput')
             .map(device => ({
-                id: device.deviceId,
+                    id: device.deviceId,
                 name: device.label || `Microphone ${device.deviceId.substring(0, 8)}` // Provide a fallback name
             }));
         
@@ -307,12 +310,16 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
     if (!(await ensureAudioContextResumed())) { // Ensure context is running first!
          console.error("Cannot start recording: AudioContext not running.");
          dotNetReference?.invokeMethodAsync('OnAudioError', 'Cannot start recording: AudioContext is not active. Please interact with the page.');
-         return false;
-     }
+                return false;
+            }
     if (!audioInitialized) {
-        console.error("Cannot start recording: Audio system not initialized.");
-        dotNetReference?.invokeMethodAsync('OnAudioError', 'Audio system not initialized. Please initialize first.');
-        return false; // Should have been initialized via user interaction
+        console.warn("Audio system not yet initialized – attempting initialization now.");
+        const ok = await initAudioWithUserInteraction();
+        if (!ok) {
+            console.error("Cannot start recording: initAudioWithUserInteraction failed.");
+            dotNetReference?.invokeMethodAsync('OnAudioError', 'Audio system not initialized. Please initialize first.');
+            return false;
+        }
     }
     if (isRecording) {
         console.warn("Recording already in progress.");
@@ -323,17 +330,17 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
 
     try {
         console.log(`Attempting to get media stream for device: ${deviceId || 'default'}`);
-        const constraints = {
-            audio: {
-                channelCount: 1,
+            const constraints = {
+                audio: {
+                    channelCount: 1,
                 sampleRate: playbackSampleRate, // Use consistent rate
-                echoCancellation: true,
-                noiseSuppression: true,
+                    echoCancellation: true,
+                    noiseSuppression: true,
                 autoGainControl: true,
                 ...(deviceId && { deviceId: { exact: deviceId } }) // Apply specific device ID if provided
-            },
-            video: false
-        };
+                },
+                video: false
+            };
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
         console.log("Media stream obtained successfully.");
 
@@ -345,7 +352,7 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
              console.log("Creating AudioRecorderProcessor node");
              audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
              audioWorkletNode.onprocessorerror = (e) => console.error("Recorder processor error", e);
-        } else {
+            } else {
             // Ensure it's active if reusing
              audioWorkletNode.port.postMessage({ command: 'start' }); // Add a 'start' command if needed by processor
         }
@@ -369,10 +376,10 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
         };
 
         const source = audioContext.createMediaStreamSource(mediaStream);
-        source.connect(audioWorkletNode);
+            source.connect(audioWorkletNode);
         // Do NOT connect recorder worklet to destination
         // audioWorkletNode.connect(audioContext.destination); // NO! This would cause feedback
-
+        
         isRecording = true;
         console.log("Recording started.");
         dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', true); // Notify C#
@@ -406,11 +413,11 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
 // --- Stop Recording ---
 async function stopRecording() {
     console.log("Attempting to stop recording.");
-    if (!isRecording) {
+        if (!isRecording) {
         console.warn("Recording not in progress.");
-        return;
-    }
-
+            return;
+        }
+        
     isRecording = false; // Set flag immediately
 
      // Signal the worklet processor to stop processing new audio
@@ -435,11 +442,11 @@ async function stopRecording() {
 
 
     // Clear interval if it was used (should not be with worklet)
-    if (recordingInterval) {
-        clearInterval(recordingInterval);
-        recordingInterval = null;
-    }
-
+        if (recordingInterval) {
+            clearInterval(recordingInterval);
+            recordingInterval = null;
+        }
+        
      // audioChunks = []; // Clear any old chunks if array still exists
 
     console.log("Recording stopped.");
@@ -506,12 +513,10 @@ async function playAudio(base64Audio, sampleRate = 24000) {
      }
       // console.log(`[js] Decoded ${float32Audio.length} samples.`);
 
-     // 4. Send data to the PlaybackProcessor
+     // 4. Send data to the PlaybackProcessor asynchronously to prevent blocking main thread
      try {
-         // Send ArrayBuffer for efficiency - transfer ownership
          playbackWorkletNode.port.postMessage({ audioData: float32Audio.buffer }, [float32Audio.buffer]);
-         // console.log("[js] Sent audio data to PlaybackProcessor.");
-         return true; // Indicate success
+         return true;
      } catch (error) {
          console.error("Error sending audio data to PlaybackProcessor:", error);
          dotNetReference?.invokeMethodAsync('OnAudioError', `Error sending audio data for playback: ${error.message}`);
@@ -532,6 +537,7 @@ async function stopAudioPlayback() {
     try {
         console.log("Sending 'clear' command to PlaybackProcessor.");
         playbackWorkletNode.port.postMessage({ command: 'clear' });
+        playbackNodeConnected = true; // still connected but cleared buffer
     } catch (error) {
         console.error("Error sending 'clear' command to PlaybackProcessor:", error);
     }
@@ -642,9 +648,10 @@ function cleanupAudio() {
      }
      audioInitialized = false;
      dotNetReference = null;
+     playbackNodeConnected = false;
 }
 
-// Expose functions to global scope or Blazor interop
+// Attach functions to window for backwards compatibility
 window.audioInterop = {
     initAudioWithUserInteraction,
     getAvailableMicrophones,
@@ -653,7 +660,21 @@ window.audioInterop = {
     playAudio,
     stopAudioPlayback,
     setDotNetReference,
-    startMicTest, // Expose if needed
-    stopMicTest,  // Expose if needed
-    cleanupAudio // Expose if needed
+    startMicTest,
+    stopMicTest,
+    cleanupAudio
+};
+
+// Export individually for ES module consumers
+export {
+    initAudioWithUserInteraction,
+    getAvailableMicrophones,
+    startRecording,
+    stopRecording,
+    playAudio,
+    stopAudioPlayback,
+    setDotNetReference,
+    startMicTest,
+    stopMicTest,
+    cleanupAudio
 };

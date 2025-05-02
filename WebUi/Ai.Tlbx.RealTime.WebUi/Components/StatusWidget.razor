@@ -8,27 +8,51 @@
     {
         <div class="error-message">Error: @ErrorMessage</div>
     }
+    @if (IsMicrophoneTesting)
+    {
+        <div class="mic-testing-message">Microphone Testing in Progress...</div>
+    }
 </div>
 
 @code {
-    public string CurrentStatus { get; set; } = "Idle";
-    public string StatusColor { get; set; } = "green";
-    public string ErrorMessage { get; set; } = string.Empty;
+    private string _statusColor = "green";
+    
+    [Parameter]
+    public string ConnectionStatus { get; set; } = "Idle";
+    
+    [Parameter]
+    public string Error { get; set; } = string.Empty;
+    
+    [Parameter]
+    public bool IsMicrophoneTesting { get; set; } = false;
 
+    // Properties updated based on parameters
+    public string CurrentStatus => ConnectionStatus;
+    public string StatusColor => _statusColor;
+    public string ErrorMessage => Error;
+    
     // Method to be called by parent component to update status
     public void UpdateStatus(string status, string color = "green")
     {
-        CurrentStatus = status;
-        StatusColor = color;
-        ErrorMessage = string.Empty;
+        ConnectionStatus = status;
+        _statusColor = color;
         StateHasChanged();
     }
 
     // Method to display error messages
     public void ShowError(string error)
     {
-        ErrorMessage = error;
-        StatusColor = "red";
+        Error = error;
+        _statusColor = "red";
         StateHasChanged();
+    }
+    
+    // React to parameter changes
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrEmpty(Error))
+        {
+            _statusColor = "red";
+        }
     }
 }

@@ -1,41 +1,75 @@
 @page "/chat"
-
-<h3>Chat Widget</h3>
+@using Ai.Tlbx.RealTimeAudio.OpenAi
+@using Ai.Tlbx.RealTimeAudio.OpenAi.Models
+@implements IDisposable
 
 <div class="chat-container">
     <div class="chat-messages">
         @foreach (var message in Messages)
         {
-            <div class="chat-message @(message.IsUser ? "user-message" : "ai-message")">
-                <span>@message.Content</span>
+            <div class="chat-message @(message.Type.ToString().ToLower())">
+                @if (message.Type == MessageType.Tool)
+                {
+                    <span class="tool-call">[Tool Call] @message.Content</span>
+                }
+                else
+                {
+                    <span>@message.Content</span>
+                }
             </div>
         }
-    </div>
-    <div class="chat-input">
-        <input type="text" @bind="NewMessage" placeholder="Type your message..." />
-        <button @onclick="SendMessage">Send</button>
     </div>
 </div>
 
 @code {
+    [CascadingParameter] protected OpenAiRealTimeApiAccess? RealTimeApi { get; set; }
+    
     public List<ChatMessage> Messages { get; set; } = new List<ChatMessage>();
-    public string NewMessage { get; set; } = string.Empty;
+
+    public enum MessageType { User, Ai, Tool }
 
     public class ChatMessage
     {
         public string Content { get; set; } = string.Empty;
-        public bool IsUser { get; set; }
+        public MessageType Type { get; set; } = MessageType.User;
     }
 
-    public EventCallback<string> OnMessageSent { get; set; }
-
-    private async Task SendMessage()
+    protected override void OnInitialized()
     {
-        if (!string.IsNullOrWhiteSpace(NewMessage))
+        if (RealTimeApi != null)
         {
-            Messages.Add(new ChatMessage { Content = NewMessage, IsUser = true });
-            await OnMessageSent.InvokeAsync(NewMessage);
-            NewMessage = string.Empty;
+            // Subscribe to the message added event to update the chat
+            RealTimeApi.MessageAdded += OnMessageAdded;
+        }
+    }
+    
+    private void OnMessageAdded(object? sender, OpenAiChatMessage message)
+    {
+        MessageType type = MessageType.Ai;
+        
+        if (message.Role == "tool")
+        {
+            type = MessageType.Tool;
+        }
+        else if (message.Role == "user")
+        {
+            type = MessageType.User;
+        }
+        
+        Messages.Add(new ChatMessage 
+        { 
+            Content = message.Content, 
+            Type = type 
+        });
+        
+        StateHasChanged();
+    }
+    
+    public void Dispose()
+    {
+        if (RealTimeApi != null)
+        {
+            RealTimeApi.MessageAdded -= OnMessageAdded;
         }
     }
 }

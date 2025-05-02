@@ -4,6 +4,8 @@
 @using Ai.Tlbx.RealTimeAudio.OpenAi.Tools
 @using Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
 @using Ai.Tlbx.RealTimeAudio.OpenAi.Tools.Models
+@using Ai.Tlbx.RealTime.WebUi.Components
+@using Ai.Tlbx.RealTimeAudio.Demo.Web
 @rendermode InteractiveServer
 @inject OpenAiRealTimeApiAccess rta
 @inject IJSRuntime JS
@@ -11,316 +13,122 @@
 
 <PageTitle>AI Voice Chat</PageTitle>
 
-<div class="container mx-auto p-4">
-    <div class="flex flex-col lg:flex-row gap-4">
-        <!-- Controls Panel -->
-        <div class="lg:w-1/3">
-            <div class="bg-white rounded-lg shadow-md p-4 mb-4">
-                <h3 class="text-xl font-bold text-gray-800 mb-4">Voice Controls</h3>
+<CascadingValue Value="rta">
+    <CascadingValue Value="sessionSettings">
+        <div class="container mx-auto p-4">
+            <div class="flex flex-col lg:flex-row gap-4">
+                <!-- Controls Panel -->
+                <div class="lg:w-1/3">
+                    <div class="bg-white rounded-lg shadow-md p-4 mb-4">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">Voice Controls</h3>
 
-                <div class="flex gap-2 mb-4">
-                    <button class="flex-1 py-2 px-4 rounded-md @(rta.IsRecording ? "bg-gray-500" : "bg-blue-600") text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                    @onclick="StartSession"
-                    disabled="@(rta.IsRecording || rta.IsConnecting)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-8.707l-3-3a1 1 0 00-1.414 1.414L10.586 9H7a1 1 0 100 2h3.586l-1.293 1.293a1 1 0 101.414 1.414l3-3a1 1 0 000-1.414z" clip-rule="evenodd" />
-                        </svg>
-                        Start
-                    </button>
-                    <button class="flex-1 py-2 px-4 rounded-md @(rta.IsRecording ? "bg-red-600" : "bg-gray-500") text-white font-medium hover:bg-opacity-90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center" 
-                    @onclick="StopSession"
-                    disabled="@(!rta.IsRecording || rta.IsConnecting)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd" />
-                        </svg>
-                        Stop
-                    </button>                    
-                </div>
-
-                <div class="mb-4">
-                    <label for="voiceSelect" class="block text-sm font-medium text-gray-700 mb-1">Assistant Voice</label>
-                    <select id="voiceSelect" class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                    @bind="CurrentVoiceString" 
-                    disabled="@rta.IsConnecting">
-                        <option value="alloy">Alloy</option>
-                        <option value="ash">Ash</option>
-                        <option value="ballad">Ballad</option>
-                        <option value="coral">Coral</option>
-                        <option value="echo">Echo</option>
-                        <option value="fable">Fable</option>
-                        <option value="nova">Nova</option>
-                        <option value="onyx">Onyx</option>
-                        <option value="sage">Sage</option>
-                        <option value="shimmer">Shimmer</option>
-                        <option value="verse">Verse</option>
-                    </select>
-                </div>
-
-                <!-- Microphone selection dropdown -->
-                <div class="mb-4">
-                    <label for="microphoneSelect" class="block text-sm font-medium text-gray-700 mb-1">Microphone</label>
-                    <div class="flex gap-2">
-                        <div class="flex-1 overflow-hidden">
-                            <select id="microphoneSelect" 
-                                    class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
-                                    style="text-overflow: ellipsis;"
-                                    @bind="selectedMicrophoneId" 
-                                    disabled="@(rta.IsRecording || rta.IsConnecting || (!micPermissionGranted && !rta.IsRecording))">
-                                @if (!micPermissionGranted && !rta.IsRecording)
-                                {
-                                    <option value="">Permission required</option>
-                                }
-                                else if (availableMicrophones.Count == 0)
-                                {
-                                    <option value="">No microphones found</option>
-                                }
-                                else
-                                {
-                                    @foreach (var mic in availableMicrophones)
-                                    {
-                                        <option value="@mic.Id" title="@(mic.Name + (mic.IsDefault ? " (Default)" : ""))">@(TruncateText(mic.Name, 25)) @(mic.IsDefault ? "(Default)" : "")</option>
-                                    }
-                                }
-                            </select>
+                        <div class="flex gap-2 mb-4">
+                            <AiTalkControl OnStartTalking="StartSession" OnStopTalking="StopSession" IsTalking="rta.IsRecording" Loading="rta.IsConnecting || rta.IsRecording" />
                         </div>
-                        <button class="p-2 bg-gray-200 hover:bg-gray-300 rounded-md transition-colors flex items-center justify-center"
-                        @onclick="RequestMicrophonePermission"
-                        disabled="@(rta.IsRecording || rta.IsConnecting || isLoadingMicrophones)">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
-                            </svg>
-                        </button>
-                    </div>
-                    @if (!micPermissionGranted && !rta.IsRecording)
-                    {
-                        <div class="mt-1 text-xs text-amber-600">
-                            <span>Click the microphone button to allow access</span>
-                        </div>
-                    }
-                    else if (rta.IsRecording)
-                    {
-                        <div class="mt-1 text-xs text-blue-600">
-                            <span>Microphone active - using @(availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "selected device")</span>
-                        </div>
-                    }
-                    else if (isLoadingMicrophones)
-                    {
-                        <div class="mt-1 text-xs text-blue-600">
-                            <span>Loading microphones...</span>
-                        </div>
-                    }
-                </div>
 
-                <div class="mb-4 flex items-center">
-                    <input type="checkbox" id="timeToolCheck" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-2" 
-                    @bind="useTimeTool" 
-                    disabled="@rta.IsRecording"> 
-                    <label for="timeToolCheck" class="text-sm font-medium text-gray-700">Enable Current Time Tool</label>
-                </div>
-
-                <div class="mt-4">
-                    <button class="w-full py-2 px-4 rounded-md bg-gray-200 text-gray-800 font-medium hover:bg-gray-300 transition-colors flex items-center justify-center"
-                    @onclick="ClearChat"
-                    disabled="@(rta.IsConnecting)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                        </svg>
-                        Clear Chat
-                    </button>
-                </div>
-
-                <div class="mt-4">
-                    <button class="w-full py-2 px-4 rounded-md bg-indigo-500 text-white font-medium hover:bg-indigo-600 transition-colors flex items-center justify-center"
-                    @onclick="TestMicrophone"
-                    disabled="@(rta.IsRecording || rta.IsMicrophoneTesting || rta.IsConnecting)">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M7 4a3 3 0 016 0v4a3 3 0 11-6 0V4zm4 10.93A7.001 7.001 0 0017 8a1 1 0 10-2 0A5 5 0 015 8a1 1 0 00-2 0 7.001 7.001 0 006 6.93V17H6a1 1 0 100 2h8a1 1 0 100-2h-3v-2.07z" clip-rule="evenodd" />
-                        </svg>
-                        Test Microphone
-                    </button>
-                </div>
-
-                @if (rta.IsConnecting)
-                {
-                    <div class="mt-4 bg-blue-100 p-3 rounded-md">
-                        <div class="flex items-center">
-                            <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                            <span class="text-blue-800">Connecting to OpenAI...</span>
+                        <div class="mb-4">
+                            <label for="voiceSelect" class="block text-sm font-medium text-gray-700 mb-1">Assistant Voice</label>
+                            <VoiceSelect SelectedVoice="@currentVoiceString" SelectedVoiceChanged="OnVoiceChanged" Disabled="@rta.IsConnecting" />
                         </div>
-                    </div>
-                }
-                else if (rta.IsInitialized)
-                {
-                    <div class="mt-4 bg-green-100 p-3 rounded-md">
-                        <div class="flex items-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-600 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                            </svg>
-                            <span class="text-green-800">Connected with voice: <span class="font-semibold">@(currentVoiceString)</span></span>
-                        </div>
-                    </div>
-                }
 
-                @if (rta.LastErrorMessage != null)
-                {
-                    <div class="mt-4 bg-red-100 p-3 rounded-md">
-                        <div class="flex items-start">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-red-600 mr-2 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
-                            </svg>
-                            <span class="text-red-800">@rta.LastErrorMessage</span>
+                        <!-- Microphone selection dropdown -->
+                        <div class="mb-4">
+                            <MicrophoneSelect AvailableMicrophones="availableMicrophones" 
+                                             SelectedMicrophoneId="selectedMicrophoneId" 
+                                             MicPermissionGranted="micPermissionGranted" 
+                                             OnRequestPermission="RequestMicrophonePermission" />
                         </div>
-                    </div>
-                }
 
-                @if (rta.IsMicrophoneTesting)
-                {
-                    <div class="mt-4 bg-indigo-100 p-3 rounded-md">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center">
-                                <div class="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-600 mr-2"></div>
-                                <span class="text-indigo-800">@micTestStatus</span>
-                            </div>
-                            <button 
-                            class="text-xs bg-red-100 hover:bg-red-200 text-red-800 font-medium py-1 px-2 rounded" 
-                            @onclick="CancelMicrophoneTest">
-                                Cancel
+                        <div class="mb-4 flex items-center">
+                            <input type="checkbox" id="timeToolCheck" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mr-2" 
+                            @bind="useTimeTool" 
+                            disabled="@rta.IsRecording"> 
+                            <label for="timeToolCheck" class="text-sm font-medium text-gray-700">Enable Current Time Tool</label>
+                        </div>
+
+                        <div class="mt-4">
+                            <button class="w-full py-2 px-4 rounded-md bg-gray-200 text-gray-800 font-medium hover:bg-gray-300 transition-colors flex items-center justify-center"
+                            @onclick="ClearChat"
+                            disabled="@(rta.IsConnecting)">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
+                                </svg>
+                                Clear Chat
                             </button>
                         </div>
+
+                        <div class="mt-4">
+                            <MicTestWidget OnStartTest="TestMicrophone" Loading="rta.IsMicrophoneTesting || rta.IsConnecting" />
+                        </div>
+
+                        <div class="mb-4">
+                            <StatusWidget ConnectionStatus="rta.ConnectionStatus" Error="rta.LastErrorMessage" IsMicrophoneTesting="rta.IsMicrophoneTesting" />
+                        </div>
+
+                        <div class="mt-4">
+                            <DiagnosticsWidget @ref="diagnosticsWidget" InitiallyExpanded="false" 
+                                               BufferLevel="0" 
+                                               Latency="0" 
+                                               SampleRate="24000" 
+                                               AudioChunksProcessed="0" />
+                        </div>
                     </div>
-                }
-            </div>
-        </div>
-
-        <!-- Chat Panel -->
-        <div class="lg:w-2/3">
-            <div class="bg-white rounded-lg shadow-md h-[600px] flex flex-col">
-                <div class="p-4 border-b border-gray-200">
-                    <h3 class="text-xl font-bold text-gray-800">Conversation</h3>
                 </div>
 
-                <div class="flex-1 p-4 overflow-y-auto space-y-4" id="chat-messages" @ref="chatContainer">
-                    @if (!rta.ChatHistory.Any())
-                    {
-                        <div class="h-full flex items-center justify-center text-gray-500">
-                            <div class="text-center">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 mx-auto text-gray-400 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" /></svg>
-                                <p>Start speaking to begin a conversation</p>
-                            </div>
+                <!-- Chat Panel -->
+                <div class="lg:w-2/3">
+                    <div class="bg-white rounded-lg shadow-md h-[600px] flex flex-col">
+                        <div class="p-4 border-b border-gray-200">
+                            <h3 class="text-xl font-bold text-gray-800">Conversation</h3>
                         </div>
-                    }
-                    else
-                    {
-                        @foreach (var message in rta.ChatHistory)
-                        {
-                            @if (message.Role == OpenAiChatMessage.UserRole)
-                            {
-                                <!-- User Message -->
-                                <div class="flex justify-end">
-                                    <div class="max-w-[80%] rounded-lg px-4 py-2 bg-blue-600 text-white">
-                                        <p class="whitespace-pre-wrap">@message.Content</p>
-                                        <div class="text-xs text-blue-200 mt-1 text-right">
-                                            @message.Timestamp.ToString("h:mm tt")
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                            else if (message.Role == OpenAiChatMessage.AssistantRole)
-                            {
-                                <!-- Assistant Message -->
-                                <div class="flex justify-start">
-                                    <div class="max-w-[80%] rounded-lg px-4 py-2 bg-gray-200 text-gray-800">
-                                        <p class="whitespace-pre-wrap">@message.Content</p>
-                                        <div class="text-xs text-gray-500 mt-1">
-                                            @message.Timestamp.ToString("h:mm tt")
-                                        </div>
-                                    </div>
-                                </div>
-                            }
-                            else if (message.Role == OpenAiChatMessage.ToolCallRole)
-                            {
-                                <!-- Tool Call Message -->
-                                <div class="flex justify-center">
-                                    <div class="w-[90%] rounded-md px-3 py-2 bg-purple-100 text-purple-800 border border-purple-200 text-sm">
-                                        <div class="flex items-center font-medium mb-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17.657 18.657A8 8 0 016.343 7.343S7 9 9 10h6c2 0 2.343 2.343 2.343 2.343m-1.171 4.314A8 8 0 016.343 7.343m11.314 11.314a8 8 0 00-11.314-11.314" /></svg>
-                                            <span>Tool Call: @message.ToolName</span>
-                                            <span class="text-xs text-purple-500 ml-auto">@message.Timestamp.ToString("h:mm:ss tt")</span>
-                                        </div>
-                                        <details class="mt-1">
-                                            <summary class="cursor-pointer text-xs text-purple-600 hover:underline">Show Arguments</summary>
-                                            <pre class="mt-1 text-xs bg-purple-50 p-2 rounded border border-purple-200 overflow-x-auto">@FormatJson(message.ToolArgumentsJson)</pre>
-                                        </details>
-                                    </div>
-                                </div>
-                            }
-                            else if (message.Role == OpenAiChatMessage.ToolResultRole)
-                            {
-                                <!-- Tool Result Message -->
-                                <div class="flex justify-center">
-                                    <div class="w-[90%] rounded-md px-3 py-2 bg-teal-100 text-teal-800 border border-teal-200 text-sm">
-                                        <div class="flex items-center font-medium mb-1">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 mr-1.5 text-teal-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                                            <span>Tool Result: @message.ToolName</span>
-                                            <span class="text-xs text-teal-500 ml-auto">@message.Timestamp.ToString("h:mm:ss tt")</span>
-                                        </div>
-                                        <details class="mt-1">
-                                            <summary class="cursor-pointer text-xs text-teal-600 hover:underline">Show Result</summary>
-                                            <pre class="mt-1 text-xs bg-teal-50 p-2 rounded border border-teal-200 overflow-x-auto">@FormatJson(message.ToolResultJson)</pre>
-                                        </details>
-                                    </div>
-                                </div>
-                            }
-                        }
-                    }
-                </div>
 
-                <div class="p-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600">
-                    @if (rta.IsRecording)
-                    {
-                        <div class="flex items-center">
-                            <div class="relative h-3 w-3 mr-2">
-                                <span class="animate-ping absolute h-3 w-3 rounded-full bg-red-400 opacity-75"></span>
-                                <span class="absolute h-3 w-3 rounded-full bg-red-500"></span>
-                            </div>
-                            <span>Listening... Just speak naturally.</span>
+                        <div class="flex-1 p-4 overflow-y-auto space-y-4" id="chat-messages" @ref="chatContainer">
+                            <ChatWidget />
                         </div>
-                    }
-                    else
-                    {
-                        <span>Click Start to begin recording</span>
-                    }
+
+                        <div class="p-3 border-t border-gray-200 bg-gray-50 text-sm text-gray-600">
+                            @if (rta.IsRecording)
+                            {
+                                <div class="flex items-center">
+                                    <div class="relative h-3 w-3 mr-2">
+                                        <span class="animate-ping absolute h-3 w-3 rounded-full bg-red-400 opacity-75"></span>
+                                        <span class="absolute h-3 w-3 rounded-full bg-red-500"></span>
+                                    </div>
+                                    <span>Listening... Just speak naturally.</span>
+                                </div>
+                            }
+                            else
+                            {
+                                <span>Click Start to begin recording</span>
+                            }
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            @if (!string.IsNullOrEmpty(rta.ConnectionStatus))
-            {
-                <div class="mt-4 bg-gray-100 p-3 rounded-md text-gray-700 text-sm">
-                    <strong>Status:</strong> @rta.ConnectionStatus
-                </div>
-            }
+            <ToastNotification @ref="toastNotification" />
         </div>
-    </div>
-</div>
+    </CascadingValue>
+</CascadingValue>
 
 @code 
 {
     private ElementReference chatContainer;
     private string currentVoiceString = string.Empty;
-    private string micTestStatus = "Testing microphone...";
     private bool useTimeTool = true;
     
     // Microphone selection related fields
-    private List<AudioDeviceInfo> availableMicrophones = new List<AudioDeviceInfo>();
+    private List<MicrophoneSelect.MicrophoneInfo> availableMicrophones = new();
     private string selectedMicrophoneId = string.Empty;
-    private bool isLoadingMicrophones = false;
     private bool micPermissionGranted = false;
+
+    private SessionSettingsContext sessionSettings = new();
+    private ToastNotification? toastNotification;
+    private DiagnosticsWidget? diagnosticsWidget;
 
     protected override async Task OnInitializedAsync()
     {
         rta.ConnectionStatusChanged += OnConnectionStatusChanged;
         rta.MessageAdded += OnMessageAdded;
-        rta.MicrophoneTestStatusChanged += OnMicrophoneTestStatusChanged;
         rta.MicrophoneDevicesChanged += OnMicrophoneDevicesChanged;
         
         // Listen for recording state changes
@@ -370,7 +178,12 @@
             if (micPermissionGranted)
             {
                 // If we got devices with real names, permission is granted
-                availableMicrophones = mics;
+                availableMicrophones = mics.Select(m => new MicrophoneSelect.MicrophoneInfo
+                {
+                    Id = m.Id,
+                    Name = m.Name,
+                    IsDefault = m.IsDefault
+                }).ToList();
                 
                 // Select default or first microphone
                 if (availableMicrophones.Count > 0)
@@ -386,7 +199,12 @@
             {
                 // We have devices but without proper labels - this suggests permission is needed
                 // but we still store them for when permission is granted
-                availableMicrophones = mics;
+                availableMicrophones = mics.Select(m => new MicrophoneSelect.MicrophoneInfo
+                {
+                    Id = m.Id,
+                    Name = m.Name,
+                    IsDefault = m.IsDefault
+                }).ToList();
                 Console.WriteLine("Microphones found but without proper labels - permission needed");
             }
             else
@@ -410,25 +228,34 @@
     {
         try
         {
-            isLoadingMicrophones = true;
+            // Instead of setting isLoadingMicrophones, we'll rely on micPermissionGranted for UI state
+            // isLoadingMicrophones = true;
             await InvokeAsync(StateHasChanged);
 
             Console.WriteLine("Explicitly requesting microphone permission...");
             
             // Attempt to get microphones - this will trigger permission request if needed
-            availableMicrophones = await rta.GetAvailableMicrophones();
+            var deviceInfos = await rta.GetAvailableMicrophones();
             
             // Small delay to ensure browser has completed loading devices
             await Task.Delay(500);
             
             // Try one more time to get the latest device list with labels
-            availableMicrophones = await rta.GetAvailableMicrophones();
+            deviceInfos = await rta.GetAvailableMicrophones();
+            
+            // Convert to MicrophoneInfo objects
+            availableMicrophones = deviceInfos.Select(m => new MicrophoneSelect.MicrophoneInfo
+            {
+                Id = m.Id,
+                Name = m.Name,
+                IsDefault = m.IsDefault
+            }).ToList();
             
             // Check if we now have devices with real names (not placeholders)
-            micPermissionGranted = availableMicrophones.Count > 0 && 
-                availableMicrophones.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
+            micPermissionGranted = deviceInfos.Count > 0 && 
+                deviceInfos.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
             
-            Console.WriteLine($"After permission request: Permission granted: {micPermissionGranted}, Found {availableMicrophones.Count} microphones");
+            Console.WriteLine($"After permission request: Permission granted: {micPermissionGranted}, Found {deviceInfos.Count} microphones");
             
             // If we have microphones with permission, select one
             if (micPermissionGranted && availableMicrophones.Count > 0)
@@ -465,31 +292,29 @@
         }
         finally
         {
-            isLoadingMicrophones = false;
+            // isLoadingMicrophones = false;
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    // Convert between string and enum
-    private string CurrentVoiceString
+    private async Task OnVoiceChanged(string newVoice)
     {
-        get => currentVoiceString;
-        set
-        {
-            currentVoiceString = value;
-            // Parse the string to the enum and update the API
-            if (Enum.TryParse<AssistantVoice>(value, true, out var voiceEnum))
-            {
-                rta.CurrentVoice = voiceEnum;
-            }
-        }
+        currentVoiceString = newVoice;
+        rta.CurrentVoice = Enum.Parse<AssistantVoice>(newVoice, true);
+        sessionSettings = sessionSettings with { SelectedVoice = newVoice };
+        await Task.CompletedTask;
     }
 
     private void OnMicrophoneDevicesChanged(object? sender, List<AudioDeviceInfo> devices)
     {
         InvokeAsync(async () => 
         {
-            availableMicrophones = devices;
+            availableMicrophones = devices.Select(m => new MicrophoneSelect.MicrophoneInfo
+            {
+                Id = m.Id,
+                Name = m.Name,
+                IsDefault = m.IsDefault
+            }).ToList();
             await Task.CompletedTask;
             StateHasChanged();
         });
@@ -499,6 +324,10 @@
     {
         InvokeAsync(async () => 
         {
+            if (!string.IsNullOrEmpty(status) && toastNotification != null)
+            {
+                await toastNotification.ShowAsync(status, "Connection Status", ToastNotification.ToastType.Info);
+            }
             await Task.CompletedTask;
             StateHasChanged();
         });
@@ -623,27 +452,10 @@
         }
     }
 
-    private void OnMicrophoneTestStatusChanged(object? sender, string status)
-    {
-        InvokeAsync(async () => 
-        {
-            micTestStatus = status;
-            await Task.CompletedTask;
-            StateHasChanged();
-        });
-    }
-
-    private void CancelMicrophoneTest()
-    {
-        rta.CancelMicrophoneTest();
-        InvokeAsync(StateHasChanged);
-    }
-
     public void Dispose()
     {
         rta.ConnectionStatusChanged -= OnConnectionStatusChanged;
         rta.MessageAdded -= OnMessageAdded;
-        rta.MicrophoneTestStatusChanged -= OnMicrophoneTestStatusChanged;
         rta.MicrophoneDevicesChanged -= OnMicrophoneDevicesChanged;
         PropertyChanged -= OnPropertyChanged;
     }

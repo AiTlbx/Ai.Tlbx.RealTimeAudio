@@ -1,0 +1,46 @@
+@page "/microphoneselect"
+
+<div class="microphone-select">
+    <label for="microphoneSelect" class="block text-sm font-medium text-gray-700 mb-1">Microphone</label>
+    @if (!MicPermissionGranted)
+    {
+        <button @onclick="RequestPermission" class="w-full py-2 px-4 rounded-md bg-blue-500 text-white font-medium hover:bg-blue-600 transition-colors">
+            Grant Microphone Access
+        </button>
+    }
+    else if (AvailableMicrophones.Count == 0)
+    {
+        <div class="text-sm text-red-500 mt-1">No microphones found</div>
+    }
+    else
+    {
+        <select id="microphoneSelect" 
+                class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                @bind="@SelectedMicrophoneId"
+                @bind:event="onchange">
+            @foreach (var mic in AvailableMicrophones)
+            {
+                <option value="@mic.Id">@mic.Name</option>
+            }
+        </select>
+    }
+</div>
+
+@code {
+    [Parameter] public List<MicrophoneInfo> AvailableMicrophones { get; set; } = new();
+    [Parameter] public string SelectedMicrophoneId { get; set; } = string.Empty;
+    [Parameter] public bool MicPermissionGranted { get; set; } = false;
+    [Parameter] public EventCallback OnRequestPermission { get; set; }
+
+    private async Task RequestPermission()
+    {
+        await OnRequestPermission.InvokeAsync();
+    }
+    
+    public class MicrophoneInfo
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public bool IsDefault { get; set; } = false;
+    }
+} 

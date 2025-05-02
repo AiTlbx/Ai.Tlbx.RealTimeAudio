@@ -1,0 +1,64 @@
+@page "/diagnostics"
+
+<div class="diagnostics-container">
+    <div class="diagnostics-header">
+        <h3>Audio Diagnostics</h3>
+        <button @onclick="ToggleVisibility" class="diagnostics-toggle">@(Expanded ? "Hide" : "Show")</button>
+    </div>
+
+    @if (Expanded)
+    {
+        <div class="diagnostics-body">
+            <div class="diagnostics-item">
+                <label>Buffer Level:</label>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: @(BufferLevel)%"></div>
+                </div>
+                <span>@BufferLevel%</span>
+            </div>
+
+            <div class="diagnostics-item">
+                <label>Latency:</label>
+                <span>@Latency ms</span>
+            </div>
+
+            <div class="diagnostics-item">
+                <label>Sample Rate:</label>
+                <span>@SampleRate Hz</span>
+            </div>
+
+            <div class="diagnostics-item">
+                <label>Audio Chunks Processed:</label>
+                <span>@AudioChunksProcessed</span>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public bool InitiallyExpanded { get; set; } = false;
+    [Parameter] public int BufferLevel { get; set; } = 0;
+    [Parameter] public int Latency { get; set; } = 0;
+    [Parameter] public int SampleRate { get; set; } = 16000;
+    [Parameter] public int AudioChunksProcessed { get; set; } = 0;
+
+    private bool Expanded { get; set; }
+
+    protected override void OnInitialized()
+    {
+        Expanded = InitiallyExpanded;
+    }
+
+    private void ToggleVisibility()
+    {
+        Expanded = !Expanded;
+    }
+
+    public void UpdateStats(int bufferLevel, int latency, int chunksProcessed)
+    {
+        BufferLevel = bufferLevel;
+        Latency = latency;
+        AudioChunksProcessed = chunksProcessed;
+        StateHasChanged();
+    }
+} 

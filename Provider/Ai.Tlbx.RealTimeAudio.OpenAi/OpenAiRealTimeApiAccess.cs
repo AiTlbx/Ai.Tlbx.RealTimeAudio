@@ -1741,5 +1741,33 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 return null;
             }
         }
+
+        /// <summary>
+        /// Sends a user message to the OpenAI API and adds it to the chat history.
+        /// </summary>
+        public async Task SendUserMessageAsync(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return;
+
+            // Add to chat history
+            var userMessage = new OpenAiChatMessage(message, OpenAiChatMessage.UserRole);
+            _chatHistory.Add(userMessage);
+            MessageAdded?.Invoke(this, userMessage);
+
+            // Send to OpenAI API if websocket is open
+            if (_webSocket?.State == WebSocketState.Open)
+            {
+                await SendAsync(new
+                {
+                    type = "conversation.item.create",
+                    item = new
+                    {
+                        type = "text",
+                        text = message
+                    }
+                });
+            }
+        }
     }    
 }

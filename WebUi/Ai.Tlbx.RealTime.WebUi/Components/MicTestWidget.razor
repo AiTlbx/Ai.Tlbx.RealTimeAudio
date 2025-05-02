@@ -3,14 +3,18 @@
 <h3>Microphone Test</h3>
 
 <div class="mic-test-container">
+    @if (Loading)
+    {
+        <div class="spinner">Loading...</div>
+    }
     <button @onclick="StartTest">Start Test</button>
     <div class="mic-level">Level: @MicLevel</div>
 </div>
 
 @code {
-    public int MicLevel { get; set; } = 0;
-
-    public EventCallback OnStartTest { get; set; }
+    [Parameter] public int MicLevel { get; set; } = 0;
+    [Parameter] public bool Loading { get; set; } = false;
+    [Parameter] public EventCallback OnStartTest { get; set; }
 
     private async Task StartTest()
     {

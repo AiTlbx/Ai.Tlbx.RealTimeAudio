@@ -60,8 +60,9 @@ registerProcessor('audio-recorder-processor', AudioRecorderProcessor);
 
 // --- Playback Processor ---
 
-const BUFFER_SIZE = 8192; // Size of the ring buffer (adjust as needed)
+const BUFFER_SIZE = 1200000; // ~50s at 24kHz – prevents overflow on very long responses
 const CROSSFADE_SAMPLES = 128; // Number of samples for crossfade (adjust as needed)
+const MIN_START_BUFFER = 4800; // ~200 ms @ 24 kHz – buffer before starting playback
 
 class PlaybackProcessor extends AudioWorkletProcessor {
     constructor(options) {
@@ -98,20 +99,21 @@ class PlaybackProcessor extends AudioWorkletProcessor {
             }
              else if (event.data.audioData) {
                 this._handleAudioData(event.data.audioData);
-                this._isPlaying = true; // Start playing once data arrives
+                // Start playing only when we have a bit of buffered audio to avoid underruns
+                if (!this._isPlaying && this._bufferFill >= MIN_START_BUFFER) {
+                    this._isPlaying = true;
+                }
                 this._isStopping = false; // Resume playing if stopped
             }
         };
     }
 
     _handleAudioData(audioData) {
-        const data = new Float32Array(audioData.buffer); // Assuming ArrayBuffer -> Float32Array
+        const data = audioData instanceof ArrayBuffer ? new Float32Array(audioData) : new Float32Array(audioData.buffer);
 
         if (this._bufferFill + data.length > BUFFER_SIZE) {
-            console.warn('[PlaybackProcessor] Buffer overflow, discarding data.');
-            // Optional: Overwrite oldest data instead of discarding new data
-            // this._readIndex = (this._writeIndex + data.length) % BUFFER_SIZE;
-            return;
+            console.warn('[PlaybackProcessor] Buffer overflow, dropping new data.');
+            return; // skip this chunk to preserve already queued audio
         }
 
         // Prepare for crossfade-in if buffer was empty or starting fresh
@@ -142,20 +144,22 @@ class PlaybackProcessor extends AudioWorkletProcessor {
 
     process(inputs, outputs, parameters) {
         const output = outputs[0];
-        const channel = output[0]; // Assuming mono output
+        const channel = output[0]; // mono
 
-        if (!this._isPlaying || channel === undefined) {
-            // Output silence if not playing or no output channel
-             if(channel) channel.fill(0);
-            // If stopping and buffer is effectively empty, terminate
-            if(this._isStopping && this._bufferFill < channel.length) {
-                 console.log('[PlaybackProcessor] Stopping.');
-                 this._isPlaying = false;
-                 return false; // Request termination
+        // Decide whether we should start or pause playback based on buffer level
+        if (!this._isPlaying) {
+            if (this._bufferFill >= MIN_START_BUFFER) {
+                this._isPlaying = true; // Enough buffered, start playback
+            } else {
+                // Not enough buffered yet – output silence and wait
+                if (channel) channel.fill(0);
+                return true;
             }
-            return true; // Keep processor alive
         }
 
+        if (channel === undefined) {
+            return true;
+        }
 
         let generatedSamples = 0;
         for (let i = 0; i < channel.length; i++) {
@@ -180,9 +184,11 @@ class PlaybackProcessor extends AudioWorkletProcessor {
             } else {
                 // Buffer underrun - fill with silence
                 channel[i] = 0.0;
-                 this._isPlaying = false; // Stop playing if buffer is empty
-                 console.warn('[PlaybackProcessor] Buffer underrun.');
-                 // Store the last samples for potential crossfade next time
+                 // Not enough data – pause playback until buffer refills
+                 if (this._bufferFill < MIN_START_BUFFER) {
+                     this._isPlaying = false;
+                 }
+                  // Store the last samples for potential crossfade next time
                  if (generatedSamples > 0) {
                      const start = (this._readIndex - Math.min(generatedSamples, CROSSFADE_SAMPLES) + BUFFER_SIZE) % BUFFER_SIZE;
                       for(let j = 0; j < CROSSFADE_SAMPLES; j++) {
@@ -192,7 +198,8 @@ class PlaybackProcessor extends AudioWorkletProcessor {
                      this._crossfadeBuffer.fill(0); // No previous samples, fade from silence
                  }
 
-                break; // Stop filling output buffer for this cycle
+                // continue filling remaining samples with silence
+                continue;
             }
         }
          // Fill remaining output buffer with silence if we stopped early due to underrun

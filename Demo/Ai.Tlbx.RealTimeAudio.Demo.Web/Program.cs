@@ -1,6 +1,7 @@
 using Ai.Tlbx.RealTimeAudio.Demo.Web.Components;
 using Ai.Tlbx.RealTimeAudio.Hardware.Web;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTime.WebUi;
 
 namespace Ai.Tlbx.RealTimeAudio.Demo.Web;
 
@@ -16,13 +17,16 @@ public class Program
 
 
         builder.Services.AddScoped<IAudioHardwareAccess, WebAudioAccess>();
-        
+
         // Register OpenAiRealTimeApiAccess with hardware access
-        builder.Services.AddScoped(sp => 
+        builder.Services.AddScoped(sp =>
         {
             var hardwareAccess = sp.GetRequiredService<IAudioHardwareAccess>();
-            return new OpenAiRealTimeApiAccess(hardwareAccess); 
+            return new OpenAiRealTimeApiAccess(hardwareAccess);
         });
+        
+        // Register IAudioInteropService
+        builder.Services.AddScoped<IAudioInteropService, AudioInteropService>();
 
         builder.Services.AddSignalR(options =>
         {

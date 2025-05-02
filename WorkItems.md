@@ -219,11 +219,6 @@ workitems look like this they have a status indicator, a ticket id (naming based
     - Document any new setup requirements due to refactoring
     - Provide troubleshooting steps for UI issues
 
-[ ] WIN-RCL-TEST-1 Create a test project for `Ai.Tlbx.RealTime.WebUi`:
-    - Set up a Blazor test app to consume RCL
-    - Add test cases for each widget's functionality
-    - Ensure automated UI testing capability
-
 # Code Style Guide Violations
 [x] CODESTYLE-1 Convert empty constructor in `OpenAiRealTimeSettings` (OpenAiRealTimeSettings.cs) to Allman brace style.
 [x] CODESTYLE-2 Convert single-line braces in `AlsaException` constructors (AlsaException.cs) to Allman style.
@@ -249,6 +244,50 @@ workitems look like this they have a status indicator, a ticket id (naming based
 [x] WEB-AUDIO-6 Add smoothing/anti-click windowing at chunk boundaries (fade-in/fade-out, window functions) (webAudioAccess.js)
 [x] WEB-AUDIO-7 Refactor playback to use AudioWorklet for advanced scheduling, mixing, and low-latency output (webAudioAccess.js, audio-processor.js)
 [ ] WEB-AUDIO-8 Add runtime configuration for buffer size, overlap, upsampling method, and diagnostics (webAudioAccess.js)
+
+# Web Demo Refactor to Ai.Tlbx.RealTime.WebUi
+
+[x] WEB-RCL-DEMO-1 Replace hard-coded chat list in `Home.razor` with `<ChatWidget />` from RCL.
+[x] WEB-RCL-DEMO-2 Swap Start/Stop voice controls with `<AiTalkControl />` component; expose `OnStart` / `OnStop` callbacks.
+[x] WEB-RCL-DEMO-3 Integrate <MicTestWidget /> for microphone loopback test; remove custom JS/HTML sections.
+[x] WEB-RCL-DEMO-4 Use `<StatusWidget />` for connection / error / mic-test banners; bind to `OpenAiRealTimeApiAccess` status events.
+[x] WEB-RCL-DEMO-5 Extract microphone selection UI into new RCL component `MicrophoneSelect.razor` (if missing) and consume it.
+
+## Configuration & State
+
+[x] WEB-RCL-DEMO-6 Provide cascading `OpenAiRealTimeApiAccess` service via DI so RCL widgets can subscribe directly.
+[x] WEB-RCL-DEMO-7 Create shared `VoiceSelect.razor` in RCL (if absent) and replace local `<select>` implementation.
+[x] WEB-RCL-DEMO-8 Add `SessionSettingsContext` (C# record + `CascadingValue`) to hold selected voice, enabled tools, mic-id etc.; wire widgets to it.
+
+## Layout / Styling
+
+[x] WEB-RCL-DEMO-9 Refactor page layout into reusable `TwoColumnLayout` component in RCL; update `MainLayout.razor` to use it.
+[x] WEB-RCL-DEMO-10 Port Tailwind CSS classes referenced by RCL widgets into demo's `tailwind.config.js` (or ensure static asset inclusion).
+
+## JS Interop Alignment
+
+[x] WEB-RCL-DEMO-11 Remove direct calls to `audioInterop.*` from `Home.razor`; instead call helper services exposed by RCL components.
+[x] WEB-RCL-DEMO-12 Add `IAudioInteropService` abstraction in RCL; implement default wrapper around existing JS module.
+
+## Feature Parity / Enhancements
+
+[x] WEB-RCL-DEMO-13 Ensure RCL `ChatWidget` supports tool-call message type display; extend component if required.
+[x] WEB-RCL-DEMO-14 Add voice-select dropdown into `AiTalkControl` (optional param) OR rely on `VoiceSelect` widget; choose single UX.
+[x] WEB-RCL-DEMO-15 Implement loading indicators inside RCL widgets for connecting / recording.
+[x] WEB-RCL-DEMO-16 Add toast notification component in RCL for non-blocking status updates; integrate demo.
+[x] WEB-RCL-DEMO-17 Expose diagnostic panel (buffer level, latency) via new `DiagnosticsWidget.razor` in RCL; optional toggle.
+
+## Cleanup / Deprecation
+
+[x] WEB-RCL-DEMO-18 Delete custom chat/message markup blocks from `Home.razor` once RCL widget lives.
+[x] WEB-RCL-DEMO-19 Remove Tailwind classes duplicated with RCL styles; dedupe CSS files.
+[x] WEB-RCL-DEMO-20 Drop unused JS interop helpers after abstraction layer added.
+
+## Testing & Docs
+
+[x] WEB-RCL-DEMO-21 Update unit/integration tests in `Ai.Tlbx.RealTime.WebUi.Test` to cover new widgets (Chat scroll, start/stop events).
+[x] WEB-RCL-DEMO-23 Update `README.md` in demo folder: setup, env vars, local run with RCL.
+
 
 
 

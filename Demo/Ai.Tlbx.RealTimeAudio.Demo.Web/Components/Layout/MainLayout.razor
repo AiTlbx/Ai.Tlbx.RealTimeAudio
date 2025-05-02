@@ -1,23 +1,26 @@
 ﻿@inherits LayoutComponentBase
+@using Ai.Tlbx.RealTimeAudio.OpenAi
+@inject OpenAiRealTimeApiAccess rta
+@using Ai.Tlbx.RealTimeAudio.Demo.Web
 
 <div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
-
     <main>
         <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
+            <h1>AI Real-Time Audio Demo</h1>
         </div>
 
         <article class="content px-4">
-            @Body
+            <CascadingValue Value="rta">
+                @Body
+            </CascadingValue>
         </article>
     </main>
 </div>
 
-<div id="blazor-error-ui" data-nosnippet>
+<div id="blazor-error-ui">
     An unhandled error has occurred.
-    <a href="." class="reload">Reload</a>
-    <span class="dismiss">🗙</span>
+    <a href="" class="reload">Reload</a>
+    <a class="dismiss">🗙</a>
 </div>
+
+<link rel="stylesheet" href="_content/Ai.Tlbx.RealTime.WebUi/css/components.css" />

@@ -1,0 +1,15 @@
+@inherits LayoutComponentBase
+@using Ai.Tlbx.RealTime.WebUi.Components
+
+<TwoColumnLayout Left="@LeftPanel" Right="@RightPanel" />
+
+@code {
+    private RenderFragment LeftPanel => __builder =>
+    {
+        __builder.AddContent(0, Body); // Controls panel (from Home.razor)
+    };
+    private RenderFragment RightPanel => __builder =>
+    {
+        __builder.AddContent(1, Body); // Chat panel (from Home.razor)
+    };
+} 

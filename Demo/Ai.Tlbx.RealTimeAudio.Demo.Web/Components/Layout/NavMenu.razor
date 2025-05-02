@@ -1,6 +1,8 @@
+@using Ai.Tlbx.RealTimeAudio.OpenAi
+
 <div class="top-row ps-3 navbar navbar-dark">
     <div class="container-fluid">
-        <a class="navbar-brand" href="">Reltime Audio Demo</a>
+        <a class="navbar-brand" href="">Real-Time Voice Chat</a>
     </div>
 </div>
 
@@ -8,7 +10,25 @@
 
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
     <nav class="nav flex-column">
-        
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-mic-fill" aria-hidden="true"></span> Voice Chat
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="javascript:void(0)" @onclick="ClearChatHistory">
+                <span class="bi bi-trash" aria-hidden="true"></span> Clear Chat
+            </NavLink>
+        </div>
     </nav>
 </div>
+
+@code {
+    [CascadingParameter] private OpenAiRealTimeApiAccess? RealTimeApi { get; set; }
+
+    private void ClearChatHistory()
+    {
+        RealTimeApi?.ClearChatHistory();
+    }
+}
 

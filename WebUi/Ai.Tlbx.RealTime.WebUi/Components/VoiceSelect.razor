@@ -1,0 +1,20 @@
+@using System.Collections.Generic
+
+<select class="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        @bind-Value="SelectedVoice"
+        @bind-Value:event="onchange"
+        disabled="@Disabled">
+    @foreach (var voice in AvailableVoices)
+    {
+        <option value="@voice">@voice</option>
+    }
+</select>
+
+@code {
+    [Parameter] public List<string> AvailableVoices { get; set; } = new() { "alloy", "ash", "ballad", "coral", "echo", "fable", "nova", "onyx", "sage", "shimmer", "verse" };
+    [Parameter] public string SelectedVoice { get; set; } = "alloy";
+    [Parameter] public EventCallback<string> SelectedVoiceChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; } = false;
+
+    // No need for explicit change handler, @bind handles it
+} 
