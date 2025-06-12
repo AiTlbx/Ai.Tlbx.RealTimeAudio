@@ -1,8 +1,6 @@
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
-using Ai.Tlbx.RealTimeAudio.OpenAi.Tools.Models;
 using System.Text.Json;
 using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Tools
 {
