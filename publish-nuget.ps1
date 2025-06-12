@@ -1,10 +1,9 @@
 # Script to build NuGet packages with auto-incremented version numbers
 # This script will:
 # 1. Commit and push any pending changes to git
-# 2. Extract the current git hash
-# 3. Increment the patch version number (1.0.x)
-# 4. Build the packages with the version 1.0.x-g{githash}
-# 5. If NUGET_API_KEY environment variable exists, upload packages to NuGet.org
+# 2. Increment the patch version number (1.0.x)
+# 3. Build the packages with the version 1.0.x
+# 4. If NUGET_API_KEY environment variable exists, upload packages to NuGet.org
 
 param(
     [Parameter(Mandatory=$false)]
@@ -94,11 +93,10 @@ else
     $newVersion = "1.0.1"
 }
 
-# Format version with git hash as a prerelease identifier (SemVer compatible)
-# Adding 'g' prefix to ensure the prerelease identifier doesn't start with a number
-$fullVersion = "$newVersion-g$gitHash"
+# Format version - using semantic version only (no git hash)
+$fullVersion = "$newVersion"
 
-# Save the new version (without git hash)
+# Save the new version
 $newVersion | Out-File -FilePath $versionFilePath -NoNewline
 Write-Host "New version: $fullVersion"
 
