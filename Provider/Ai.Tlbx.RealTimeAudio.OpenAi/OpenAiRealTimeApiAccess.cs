@@ -426,15 +426,18 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     }
                 }
 
-                // Construct the session object more explicitly
                 var sessionPayload = new {
-                    model = "gpt-4o-realtime-preview-2024-12-17",
+                    model = "gpt-4o-realtime-preview-2025-06-03",
                     voice = _settings.GetVoiceString(),
                     modalities = _settings.Modalities.ToArray(),
                     temperature = 0.8,
+                    speed = 1.0,
                     tool_choice = "auto",
                     input_audio_format = _settings.GetAudioFormatString(_settings.InputAudioFormat),
-                    //input_audio_noise_reduction = "near_field", // other option is "far_field"
+                    input_audio_noise_reduction = new
+                    {
+                        type = "near_field"
+                    }, // other option is "far_field"
                     output_audio_format = _settings.GetAudioFormatString(_settings.OutputAudioFormat),
                     input_audio_transcription = new { model = "gpt-4o-transcribe" },
                     instructions = _settings.Instructions,
