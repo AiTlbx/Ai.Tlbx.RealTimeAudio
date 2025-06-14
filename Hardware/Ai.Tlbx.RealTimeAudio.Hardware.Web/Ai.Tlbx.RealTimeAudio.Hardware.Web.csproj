@@ -4,8 +4,29 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>    
-    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>    
-  </PropertyGroup>  
+    <StaticWebAssetBasePath>/</StaticWebAssetBasePath>
+    
+    <!-- NuGet Package Metadata -->
+    <PackageId>Ai.Tlbx.RealTimeAudio.Hardware.Web</PackageId>
+    <Version>2.2.1</Version>
+    <Authors>Johannes Schmidt</Authors>
+    <Company>TLBX</Company>
+    <Description>Web-specific audio provider for Ai.Tlbx.RealTimeAudio</Description>
+    <PackageTags>audio;web;blazor;realtime;hardware</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageOutputPath>..\..\nupkg</PackageOutputPath>
+    <PackageProjectUrl>https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio</PackageProjectUrl>
+    <Copyright>Copyright (c) 2024 Johannes Schmidt, TLBX</Copyright>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.4" />
