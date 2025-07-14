@@ -243,7 +243,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     string base64Audio = Convert.ToBase64String(buffer);
                     Debug.WriteLine($"Audio data recorded: {e.BytesRecorded} bytes, base64 length: {base64Audio.Length}");
 
-                    _audioDataReceivedHandler?.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64Audio));
+                    _audioDataReceivedHandler?.Invoke(this, new MicrophoneAudioReceivedEventArgs(base64Audio));
                 }
             }
             catch (Exception ex)

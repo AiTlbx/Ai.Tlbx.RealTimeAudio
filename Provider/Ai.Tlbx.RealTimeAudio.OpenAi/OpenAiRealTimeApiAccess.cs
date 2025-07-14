@@ -16,6 +16,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         private const string REALTIME_WEBSOCKET_ENDPOINT = "wss://api.openai.com/v1/realtime";
         private const int CONNECTION_TIMEOUT_MS = 10000;
         private const int MAX_RETRY_ATTEMPTS = 3;
+        private const int AUDIO_BUFFER_SIZE = 32384;
+        private const int STATUS_UPDATE_INTERVAL_MS = 500;
+        
+        // Model constants
+        private const string MODEL_GPT4O_REALTIME = "gpt-4o-realtime-preview-2025-06-03";
+        private const string MODEL_GPT4O_MINI_REALTIME = "gpt-4o-mini-realtime-preview-2024-12-17";
+        private const string MODEL_TRANSCRIBE = "gpt-4o-transcribe";
 
         private readonly IAudioHardwareAccess _hardwareAccess;
         private readonly string _apiKey;
@@ -36,9 +43,14 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             PropertyNamingPolicy = null,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         };
+        
+        private readonly JsonSerializerOptions _camelCaseJsonOptions = new()
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
 
         private DateTime _lastStatusUpdate = DateTime.MinValue;
-        private const int STATUS_UPDATE_INTERVAL_MS = 500;
         private string _lastRaisedStatus = string.Empty;
 
         private List<OpenAiChatMessage> _chatHistory = new List<OpenAiChatMessage>();
@@ -81,6 +93,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         public OpenAiRealTimeSettings Settings => _settings;
 
         // For backward compatibility
+        [Obsolete("Use Settings.TurnDetection instead. This property will be removed in a future version.")]
         public TurnDetectionSettings TurnDetectionSettings
         {
             get => _settings.TurnDetection;
@@ -210,25 +223,22 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             _lastStatusUpdate = DateTime.UtcNow;
         }
 
-        // LOGSTAT-10: Remove Obsolete Members (Old methods, properties, fields)
-        // Replacing RaiseStatus with ReportStatus
-        private void RaiseStatus(string status)
-        {
-            // Check if we're throttling updates
-            if ((DateTime.UtcNow - _lastStatusUpdate).TotalMilliseconds < STATUS_UPDATE_INTERVAL_MS && 
-                status == _lastRaisedStatus)
-            {
-                return;
-            }
-
-            ReportStatus(StatusCategory.Connection, StatusCode.Connected, status);
-        }
 
         /// <summary>
         /// Starts the full lifecycle - initializes the connection if needed and starts recording audio
         /// </summary>
         /// <param name="settings">Optional settings to configure the API behavior</param>
         public async Task Start(OpenAiRealTimeSettings? settings = null)
+        {
+            await Start(settings, CancellationToken.None);
+        }
+        
+        /// <summary>
+        /// Starts the full lifecycle - initializes the connection if needed and starts recording audio
+        /// </summary>
+        /// <param name="settings">Optional settings to configure the API behavior</param>
+        /// <param name="cancellationToken">Cancellation token to cancel the operation</param>
+        public async Task Start(OpenAiRealTimeSettings? settings, CancellationToken cancellationToken)
         {
             try
             {
@@ -242,6 +252,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 
                 if (!_isInitialized || _webSocket?.State != WebSocketState.Open)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     _isConnecting = true;
                     ReportStatus(StatusCategory.Connection, StatusCode.Connecting, "Connection not initialized, connecting first...");
                     await InitializeConnection(); // ConfigureSession is called within InitializeConnection
@@ -257,7 +268,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 }
                 else
                 {
-                    ReportStatus(StatusCategory.Error, StatusCode.RecordingFailed, "Failed to start recording, attempting to reinitialize");
+                    ReportStatus(StatusCategory.Error, StatusCode.RecordingFailed, "Failed to start audio recording. Check microphone permissions and device availability. Attempting to reinitialize...");
                     await Cleanup();
                     await Task.Delay(500);
                     _isConnecting = true;
@@ -271,8 +282,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     }
                     else
                     {
-                        _lastErrorMessage = "Failed to start recording after reconnection";
-                        ReportStatus(StatusCategory.Error, StatusCode.RecordingFailed, "Recording failed, please reload the page");
+                        _lastErrorMessage = "Failed to start audio recording after reconnection. Please check your microphone is properly connected and permissions are granted.";
+                        ReportStatus(StatusCategory.Error, StatusCode.RecordingFailed, "Audio recording failed. Please check your microphone settings and reload the page.");
                     }
                 }
             }
@@ -427,7 +438,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 }
 
                 var sessionPayload = new {
-                    model = "gpt-4o-realtime-preview-2025-06-03",
+                    model = MODEL_GPT4O_REALTIME,
                     voice = _settings.GetVoiceString(),
                     modalities = _settings.Modalities.ToArray(),
                     temperature = 0.8,
@@ -439,7 +450,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                         type = "near_field"
                     }, // other option is "far_field"
                     output_audio_format = _settings.GetAudioFormatString(_settings.OutputAudioFormat),
-                    input_audio_transcription = new { model = "gpt-4o-transcribe" },
+                    input_audio_transcription = new { model = MODEL_TRANSCRIBE },
                     instructions = _settings.Instructions,
                     turn_detection = turnDetectionConfig, 
                     tools = toolsConfig 
@@ -453,15 +464,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     session = sessionPayload
                 };
 
-                // Force camelCase serialization for all properties
-                var camelCaseOptions = new JsonSerializerOptions 
-                { 
-                    PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-                };
-                
                 // Log the exact JSON being sent
-                string configJson = JsonSerializer.Serialize(sessionConfigMessage, camelCaseOptions);
+                string configJson = JsonSerializer.Serialize(sessionConfigMessage, _camelCaseJsonOptions);
                 Log(LogCategory.WebSocket, LogLevel.Debug, $"Sending session config: {configJson}");
                 
                 // Send the configuration JSON as a string to prevent any serialization issues
@@ -478,12 +482,12 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
 
                 string toolsDesc = (toolsConfig != null && toolsConfig.Count > 0) ? $" with {toolsConfig.Count} tool(s)" : "";
 
-                RaiseStatus($"Session configured with voice: {_settings.GetVoiceString()}, {turnTypeDesc}{toolsDesc}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Session configured with voice: {_settings.GetVoiceString()}, {turnTypeDesc}{toolsDesc}");
             }
             catch (Exception ex)
             {
                 Log(LogCategory.Session, LogLevel.Error, $"Error configuring session: {ex.Message}", ex);
-                RaiseStatus($"Error configuring session: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error configuring session: {ex.Message}");
                 throw;
             }
         }
@@ -569,11 +573,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
                     
                     Log(LogCategory.WebSocket, LogLevel.Info, $"Connecting to OpenAI API, attempt {i + 1} of {MAX_RETRY_ATTEMPTS}...");
-                    RaiseStatus($"Connecting to OpenAI API ({i + 1}/{MAX_RETRY_ATTEMPTS})...");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Connecting to OpenAI API ({i + 1}/{MAX_RETRY_ATTEMPTS})...");
 
                     using var cts = new CancellationTokenSource(CONNECTION_TIMEOUT_MS);
                     await _webSocket.ConnectAsync(
-                        new Uri($"{REALTIME_WEBSOCKET_ENDPOINT}?model=gpt-4o-realtime-preview-2024-12-17"),
+                        new Uri($"{REALTIME_WEBSOCKET_ENDPOINT}?model={MODEL_GPT4O_REALTIME}"),
                         cts.Token);
 
                     Log(LogCategory.WebSocket, LogLevel.Info, "Connected successfully");
@@ -593,7 +597,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     _webSocket = null;
                     
                     Log(LogCategory.WebSocket, LogLevel.Error, $"WebSocket error on connect attempt {i + 1}: {wsEx.Message}, WebSocketErrorCode: {wsEx.WebSocketErrorCode}", wsEx);
-                    RaiseStatus($"Connection error: {wsEx.Message}");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Connection error: {wsEx.Message}");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -608,7 +612,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     _webSocket = null;
                     
                     Log(LogCategory.WebSocket, LogLevel.Error, $"Connection timeout on attempt {i + 1}");
-                    RaiseStatus($"Connection timeout");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Connection timeout");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -623,7 +627,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     _webSocket = null;
                     
                     Log(LogCategory.WebSocket, LogLevel.Error, $"Connect attempt {i + 1} failed: {ex.Message}", ex);
-                    RaiseStatus($"Connection error: {ex.Message}");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Connection error: {ex.Message}");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -638,7 +642,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
 
         private async Task ReceiveAsync(CancellationToken ct)
         {
-            var buffer = new byte[32384];
+            var buffer = new byte[AUDIO_BUFFER_SIZE];
             int consecutiveErrorCount = 0;
             
             while (_webSocket?.State == WebSocketState.Open && !ct.IsCancellationRequested)
@@ -672,17 +676,17 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     if (wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                     {
                         Log(LogCategory.WebSocket, LogLevel.Warning, "Connection closed prematurely by server");
-                        RaiseStatus("Connection closed by server, will attempt to reconnect if needed");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Connection closed by server, will attempt to reconnect if needed");
                         break; // Exit the loop to allow reconnection logic to run
                     }
                     else
                     {
                         Log(LogCategory.WebSocket, LogLevel.Error, $"WebSocket error: {wsEx.Message}, ErrorCode: {wsEx.WebSocketErrorCode}", wsEx);
-                        RaiseStatus($"WebSocket error: {wsEx.Message}");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"WebSocket error: {wsEx.Message}");
                         
                         if (consecutiveErrorCount > 3)
                         {
-                            RaiseStatus("Too many consecutive WebSocket errors, reconnecting...");
+                            ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Too many consecutive WebSocket errors, reconnecting...");
                             // Force a reconnection
                             break;
                         }
@@ -697,11 +701,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 {
                     consecutiveErrorCount++;
                     Log(LogCategory.WebSocket, LogLevel.Error, $"Receive error: {ex.Message}", ex);
-                    RaiseStatus($"Receive error: {ex.Message}");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Receive error: {ex.Message}");
                     
                     if (consecutiveErrorCount > 3)
                     {
-                        RaiseStatus("Too many consecutive receive errors, reconnecting...");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Too many consecutive receive errors, reconnecting...");
                         break;
                     }
                     
@@ -759,7 +763,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                         string errorDetails = $"Error: {errorType}, Code: {errorCode}, Message: {errorMessage}";
 
                         Log(LogCategory.WebSocket, LogLevel.Error, errorDetails);
-                        RaiseStatus($"OpenAI API Error: {errorMessage}");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"OpenAI API Error: {errorMessage}");
                         break;
 
                     case "rate_limits.updated":
@@ -902,13 +906,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                                 _chatHistory.Add(message);
                                 MessageAdded?.Invoke(this, message);
                                 _currentUserMessage.Clear();
-                                RaiseStatus("User said: " + transcript);
+                                ReportStatus(StatusCategory.Connection, StatusCode.Connected, "User said: " + transcript);
                             }
                         }
                         break;
 
                     case "input_audio_buffer.speech_started":
-                        RaiseStatus("Speech detected");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Speech detected");
                         await SendAsync(new
                         {
                             type = "response.cancel",                            
@@ -917,7 +921,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                         break;
 
                     case "input_audio_buffer.speech_stopped":
-                        RaiseStatus("Speech ended");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Speech ended");
                         break;
 
                     case "conversation.item.start":
@@ -975,7 +979,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                                     // Clear the current message since we've now got the complete version
                                     _currentAiMessage.Clear();
                                     
-                                    RaiseStatus("Received complete message from assistant");
+                                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Received complete message from assistant");
                                 }
                             }
                         }
@@ -1073,31 +1077,31 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             }
             catch (JsonException jsonEx)
             {
-                 RaiseStatus($"Error parsing JSON message: {jsonEx.Message}. JSON: {json.Substring(0, Math.Min(100, json.Length))}...");
+                 ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error parsing JSON message: {jsonEx.Message}. JSON: {json.Substring(0, Math.Min(100, json.Length))}...");
                  Log(LogCategory.WebSocket, LogLevel.Error, $"[WebSocket] JSON Parse Error: {jsonEx.Message} for JSON: {json}", jsonEx);
             }
             catch (Exception ex)
             {
                 // Catching generic Exception should be done carefully. Ensure specific exceptions are handled above.
-                RaiseStatus($"Error handling message: {ex.Message}. JSON: {json.Substring(0, Math.Min(100, json.Length))}...");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error handling message: {ex.Message}. JSON: {json.Substring(0, Math.Min(100, json.Length))}...");
                 Log(LogCategory.WebSocket, LogLevel.Error, $"[WebSocket] General Error Handling Message: {ex.Message} for JSON: {json}", ex);
                 Log(LogCategory.WebSocket, LogLevel.Error, $"[WebSocket] StackTrace: {ex.StackTrace}", ex);
             }
         }
 
-        private async void OnAudioDataReceived(object sender, MicrophoneAudioReceivedEvenArgs e)
+        private async void OnAudioDataReceived(object sender, MicrophoneAudioReceivedEventArgs e)
         {
             try
             {
                 if (_webSocket?.State != WebSocketState.Open)
                 {
-                    RaiseStatus("Warning: Received audio data but WebSocket is not open");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Warning: Received audio data but WebSocket is not open");
                     return;
                 }
 
                 if (string.IsNullOrEmpty(e.Base64EncodedPcm16Audio))
                 {
-                    RaiseStatus("Warning: Received empty audio data");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Warning: Received empty audio data");
                     return;
                 }
 
@@ -1111,7 +1115,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             catch (Exception ex)
             {
                 Log(LogCategory.Audio, LogLevel.Error, $"Error sending audio data: {ex.Message}", ex);
-                RaiseStatus($"Error sending audio data: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error sending audio data: {ex.Message}");
             }
         }
 
@@ -1136,7 +1140,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 catch (JsonException jsonEx)
                 {
                     Log(LogCategory.WebSocket, LogLevel.Error, $"JSON serialization error: {jsonEx.Message}", jsonEx);
-                    RaiseStatus($"Error serializing message: {jsonEx.Message}");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error serializing message: {jsonEx.Message}");
                     throw; // Re-throw to be caught by outer catch
                 }
 
@@ -1146,7 +1150,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             catch (Exception ex)
             {
                 Log(LogCategory.WebSocket, LogLevel.Error, $"Error sending message: {ex.Message}\nJSON: {json}", ex);
-                RaiseStatus($"Error sending message to OpenAI: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error sending message to OpenAI: {ex.Message}");
             }
         }
 
@@ -1255,7 +1259,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             catch (Exception ex)
             {
                 Log(LogCategory.WebSocket, LogLevel.Warning, $"[WebSocket] Error during cleanup: {ex.Message}", ex);
-                RaiseStatus($"Error during cleanup: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error during cleanup: {ex.Message}");
             }
         }
 
@@ -1325,13 +1329,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     }
                     catch (Exception ex)
                     {
-                        RaiseStatus($"Error waiting for receive task to complete: {ex.Message}");
+                        ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error waiting for receive task to complete: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                RaiseStatus($"Error stopping WebSocket receive: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error stopping WebSocket receive: {ex.Message}");
             }
         }
 
@@ -1364,7 +1368,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     _ => "unknown turn detection"
                 };
                 
-                RaiseStatus($"Turn detection updated to {turnTypeDesc}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Turn detection updated to {turnTypeDesc}");
             }
         }
         
@@ -1385,11 +1389,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             if (_isInitialized && _webSocket?.State == WebSocketState.Open)
             {
                 await ConfigureSession();
-                RaiseStatus("Settings updated and applied");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Settings updated and applied");
             }
             else
             {
-                RaiseStatus("Settings updated, will be applied when connected");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Settings updated, will be applied when connected");
             }
         }
 
@@ -1427,7 +1431,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 if (!success)
                 {
                     _isMicrophoneTesting = false;
-                    RaiseMicTestStatus("Failed to start recording for microphone test");
+                    RaiseMicTestStatus("Failed to start recording for microphone test. Please check microphone permissions.");
                     return false;
                 }
                 
@@ -1509,7 +1513,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             }
         }
         
-        private void OnMicTestAudioReceived(object sender, MicrophoneAudioReceivedEvenArgs e)
+        private void OnMicTestAudioReceived(object sender, MicrophoneAudioReceivedEventArgs e)
         {
             if (_isMicrophoneTesting && !string.IsNullOrEmpty(e.Base64EncodedPcm16Audio))
             {
@@ -1547,7 +1551,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         {
             if (_webSocket?.State != WebSocketState.Open)
             {
-                RaiseStatus("Cannot send function result: WebSocket is not open.");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, "Cannot send function result: WebSocket is not open.");
                 Log(LogCategory.WebSocket, LogLevel.Warning, "[WebSocket] Attempted to send function result, but socket is not open.");
                 return;
             }
@@ -1634,7 +1638,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             catch (Exception ex)
             {
                 Log(LogCategory.Tooling, LogLevel.Error, $"[Tooling] Error handling tool result: {ex.Message}", ex);
-                RaiseStatus($"Error handling tool result: {ex.Message}");
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Error handling tool result: {ex.Message}");
             }
         }
 
@@ -1709,12 +1713,12 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 bool success = await _hardwareAccess.SetMicrophoneDevice(deviceId);
                 if (success)
                 {
-                    RaiseStatus($"Microphone device set successfully");
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, $"Microphone device set successfully");
                 }
                 else
                 {
-                    _lastErrorMessage = "Failed to set microphone device";
-                    RaiseStatus(_lastErrorMessage);
+                    _lastErrorMessage = $"Failed to set microphone device '{deviceId}'. Device may be disconnected or unavailable.";
+                    ReportStatus(StatusCategory.Connection, StatusCode.Connected, _lastErrorMessage);
                 }
                 
                 return success;
@@ -1723,7 +1727,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             {
                 Log(LogCategory.OpenAiRealTimeApiAccess, LogLevel.Error, $"[OpenAiRealTimeApiAccess] Error setting microphone: {ex.Message}", ex);
                 _lastErrorMessage = $"Error setting microphone: {ex.Message}";
-                RaiseStatus(_lastErrorMessage);
+                ReportStatus(StatusCategory.Connection, StatusCode.Connected, _lastErrorMessage);
                 return false;
             }
         }

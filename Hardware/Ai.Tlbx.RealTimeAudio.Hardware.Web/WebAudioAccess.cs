@@ -147,7 +147,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 
             try
             {
-                _audioDataReceivedHandler.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64EncodedPcm16Audio));
+                _audioDataReceivedHandler.Invoke(this, new MicrophoneAudioReceivedEventArgs(base64EncodedPcm16Audio));
             }
             catch (Exception ex)
             {
@@ -425,7 +425,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 }
 
                 // Invoke the callback with the received audio data
-                _audioDataReceivedHandler.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64EncodedPcm16Audio));
+                _audioDataReceivedHandler.Invoke(this, new MicrophoneAudioReceivedEventArgs(base64EncodedPcm16Audio));
                 Debug.WriteLine("[WebAudioAccess] Successfully invoked _audioDataReceivedHandler");
             }
             catch (Exception ex)

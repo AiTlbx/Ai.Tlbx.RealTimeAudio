@@ -10,3 +10,4 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Web
         public string SelectedMicrophoneId { get; init; } = string.Empty;
     }
 }
+

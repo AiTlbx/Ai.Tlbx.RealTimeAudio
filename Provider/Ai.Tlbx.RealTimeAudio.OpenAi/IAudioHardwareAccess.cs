@@ -75,7 +75,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
     /// </summary>
     /// <param name="sender">The source of the event.</param>
     /// <param name="e">The event arguments containing the received audio data.</param>
-    public delegate void MicrophoneAudioReceivedEventHandler(object sender, MicrophoneAudioReceivedEvenArgs e);
+    public delegate void MicrophoneAudioReceivedEventHandler(object sender, MicrophoneAudioReceivedEventArgs e);
 
     /// <summary>
     /// Represents information about an audio device.

@@ -699,7 +699,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                                 
                                 // Convert the PCM data to Base64 string and send
                                 string base64Audio = Convert.ToBase64String(dataToSend);
-                                _audioDataHandler?.Invoke(this, new MicrophoneAudioReceivedEvenArgs(base64Audio));
+                                _audioDataHandler?.Invoke(this, new MicrophoneAudioReceivedEventArgs(base64Audio));
                                 
                                 if (packetsRead % 100 == 0) // Log every 100 packets (10 seconds)
                                 {

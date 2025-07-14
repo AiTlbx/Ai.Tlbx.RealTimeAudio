@@ -1,10 +1,10 @@
 namespace Ai.Tlbx.RealTimeAudio.OpenAi
 {
-    public class MicrophoneAudioReceivedEvenArgs : EventArgs
+    public class MicrophoneAudioReceivedEventArgs : EventArgs
     {
         public string Base64EncodedPcm16Audio { get; set; }
 
-        public MicrophoneAudioReceivedEvenArgs(string base64EncodedPcm16Audio)
+        public MicrophoneAudioReceivedEventArgs(string base64EncodedPcm16Audio)
         {
             Base64EncodedPcm16Audio = base64EncodedPcm16Audio;
 

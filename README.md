@@ -5,6 +5,13 @@
 
 A toolkit for real-time audio processing in .NET applications with seamless integration with AI services.
 
+## Version 3.0.0
+
+This major release includes:
+- Updated to use the latest OpenAI Realtime API model (`gpt-4o-realtime-preview-2025-06-03`)
+- Enhanced audio processing capabilities
+- Improved cross-platform support for Windows, Linux, and Web platforms
+
 ## GitHub Repository
 
 [https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio](https://github.com/AiTlbx/Ai.Tlbx.RealTimeAudio)
@@ -104,10 +111,42 @@ await Task.Delay(TimeSpan.FromSeconds(10));
 captureSession.StopCapture();
 ```
 
+### Ai.Tlbx.RealTimeAudio.Hardware.Linux
+
+[![NuGet](https://img.shields.io/nuget/v/Ai.Tlbx.RealTimeAudio.Hardware.Linux.svg)](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Linux/)
+[![NuGet](https://img.shields.io/nuget/dt/Ai.Tlbx.RealTimeAudio.Hardware.Linux.svg)](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Linux/)
+
+Linux-specific hardware integration for real-time audio processing using ALSA (Advanced Linux Sound Architecture).
+
+**NuGet Package**: [https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Linux/](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Linux/)
+
+#### Installation
+
+```
+dotnet add package Ai.Tlbx.RealTimeAudio.Hardware.Linux
+```
+
+### Ai.Tlbx.RealTimeAudio.Hardware.Web
+
+[![NuGet](https://img.shields.io/nuget/v/Ai.Tlbx.RealTimeAudio.Hardware.Web.svg)](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Web/)
+[![NuGet](https://img.shields.io/nuget/dt/Ai.Tlbx.RealTimeAudio.Hardware.Web.svg)](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Web/)
+
+Web-based audio integration for real-time audio processing in Blazor applications using Web Audio API.
+
+**NuGet Package**: [https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Web/](https://www.nuget.org/packages/Ai.Tlbx.RealTimeAudio.Hardware.Web/)
+
+#### Installation
+
+```
+dotnet add package Ai.Tlbx.RealTimeAudio.Hardware.Web
+```
+
 ## Requirements
 
 - .NET 9.0 or later
 - Windows 10 or later (for Windows-specific components)
+- Linux with ALSA support (for Linux-specific components)
+- Modern web browser with Web Audio API support (for Web components)
 
 ## License
 

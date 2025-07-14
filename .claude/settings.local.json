@@ -3,7 +3,10 @@
     "allow": [
       "Bash(dotnet migrate:*)",
       "Bash(dotnet --version)",
-      "Bash(dotnet sln:*)"
+      "Bash(dotnet sln:*)",
+      "WebFetch(domain:platform.openai.com)",
+      "Bash(mv:*)",
+      "Bash(dotnet build:*)"
     ],
     "deny": []
   }
