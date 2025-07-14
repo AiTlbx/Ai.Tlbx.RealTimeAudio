@@ -1,0 +1,27 @@
+<Solution>
+  <Folder Name="/Demo/">
+    <Project Path="Demo/Ai.Tlbx.RealTimeAudio.Demo.Linux/Ai.Tlbx.RealTimeAudio.Demo.Linux.csproj" />
+    <Project Path="Demo/Ai.Tlbx.RealTimeAudio.Demo.Web/Ai.Tlbx.RealTimeAudio.Demo.Web.csproj" />
+    <Project Path="Demo/Ai.Tlbx.RealTimeAudio.Demo.Windows/Ai.Tlbx.RealTimeAudio.Demo.Windows.csproj" />
+  </Folder>
+  <Folder Name="/Hardware/">
+    <Project Path="Hardware/Ai.Tlbx.RealTimeAudio.Hardware.Linux/Ai.Tlbx.RealTimeAudio.Hardware.Linux.csproj" />
+    <Project Path="Hardware/Ai.Tlbx.RealTimeAudio.Hardware.Web/Ai.Tlbx.RealTimeAudio.Hardware.Web.csproj" />
+    <Project Path="Hardware/Ai.Tlbx.RealTimeAudio.Hardware.Windows/Ai.Tlbx.RealTimeAudio.Hardware.Windows.csproj" />
+  </Folder>
+  <Folder Name="/Provider/">
+    <Project Path="Provider/Ai.Tlbx.RealTimeAudio.OpenAi/Ai.Tlbx.RealTimeAudio.OpenAi.csproj" />
+  </Folder>
+  <Folder Name="/Solution Items/">
+    <File Path=".editorconfig" />
+    <File Path=".gitignore" />
+    <File Path="CodeStyleGuide.md" />
+    <File Path="publish-nuget.ps1" />
+    <File Path="README.md" />
+    <File Path="version.txt" />
+    <File Path="WorkItems.md" />
+  </Folder>
+  <Folder Name="/WebUi/">
+    <Project Path="WebUi/Ai.Tlbx.RealTime.WebUi/Ai.Tlbx.RealTime.WebUi.csproj" />
+  </Folder>
+</Solution>

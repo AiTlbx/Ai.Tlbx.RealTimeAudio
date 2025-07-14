@@ -135,7 +135,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             }
         }
 
-        public async Task InitializeConnection()
+        private async Task InitializeConnection()
         {
             if (_isInitialized && _webSocket?.State == WebSocketState.Open)
             {

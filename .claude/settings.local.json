@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet migrate:*)",
+      "Bash(dotnet --version)",
+      "Bash(dotnet sln:*)"
+    ],
+    "deny": []
+  }
+}
