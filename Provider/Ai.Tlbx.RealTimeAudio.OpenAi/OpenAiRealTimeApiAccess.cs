@@ -442,7 +442,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                     voice = _settings.GetVoiceString(),
                     modalities = _settings.Modalities.ToArray(),
                     temperature = 0.8,
-                    speed = 1.0,
+                    speed = _settings.Speed,
                     tool_choice = "auto",
                     input_audio_format = _settings.GetAudioFormatString(_settings.InputAudioFormat),
                     input_audio_noise_reduction = new

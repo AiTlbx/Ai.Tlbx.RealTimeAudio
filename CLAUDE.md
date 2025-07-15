@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Shell Commands
+
+**ALWAYS use `pwsh` instead of `powershell`** - This system uses PowerShell Core (pwsh) as the default shell.
+
+### PowerShell Execution Policy
+Before running PowerShell scripts, the execution policy needs to be set ONCE per session:
+```bash
+pwsh -Command "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process"
+```
+
+If you encounter execution policy errors, ask the user to run the above command once for their session.
+
 ## Common Development Commands
 
 Build the entire solution:

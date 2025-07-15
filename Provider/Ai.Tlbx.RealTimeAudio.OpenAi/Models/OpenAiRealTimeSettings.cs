@@ -53,6 +53,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         public List<RealTimeTool> Tools { get; set; } = new List<RealTimeTool>();
 
         /// <summary>
+        /// The speed at which the voice speaks
+        /// </summary>
+        public double Speed { get; set; } = 1.0;
+
+        /// <summary>
         /// Creates a default settings object
         /// </summary>
         public OpenAiRealTimeSettings()
