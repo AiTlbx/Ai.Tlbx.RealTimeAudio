@@ -8,7 +8,8 @@
       "Bash(mv:*)",
       "Bash(dotnet build:*)",
       "Bash(pwsh:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": []
   }
