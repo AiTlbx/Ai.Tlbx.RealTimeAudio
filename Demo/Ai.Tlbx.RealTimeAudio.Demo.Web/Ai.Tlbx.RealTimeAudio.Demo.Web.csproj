@@ -13,7 +13,7 @@
 
   <ItemGroup Condition="'$(Configuration)' == 'Release'">
     <ProjectReference Include="..\..\Hardware\Ai.Tlbx.RealTimeAudio.Hardware.Web\Ai.Tlbx.RealTimeAudio.Hardware.Web.csproj" />
-    <PackageReference Include="Ai.Tlbx.RealTimeAudio.OpenAi" Version="1.0.0" />
+    <PackageReference Include="Ai.Tlbx.RealTimeAudio.OpenAi" Version="*" />
   </ItemGroup>
 
   <ItemGroup>

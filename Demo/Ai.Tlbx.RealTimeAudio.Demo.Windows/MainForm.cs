@@ -27,7 +27,6 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             // Hook up events
             _audioService.MessageAdded += OnMessageAdded;
             _audioService.ConnectionStatusChanged += OnConnectionStatusChanged;
-            _audioService.MicrophoneTestStatusChanged += OnMicrophoneTestStatusChanged;
             
             // Set default voice
             _audioService.CurrentVoice = AssistantVoice.Alloy;
@@ -78,18 +77,6 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             UpdateUIState();
         }
         
-        private void OnMicrophoneTestStatusChanged(object? sender, string status)
-        {
-            if (InvokeRequired)
-            {
-                Invoke(new Action(() => OnMicrophoneTestStatusChanged(sender, status)));
-                return;
-            }
-            
-            lblStatus.Text = status;
-            Debug.WriteLine($"Mic test status: {status}");
-            UpdateUIState();
-        }
         
         private async void btnTestMic_Click(object sender, EventArgs e)
         {
@@ -226,7 +213,6 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             {
                 _audioService.MessageAdded -= OnMessageAdded;
                 _audioService.ConnectionStatusChanged -= OnConnectionStatusChanged;
-                _audioService.MicrophoneTestStatusChanged -= OnMicrophoneTestStatusChanged;
             }
             
             if (_audioHardware != null)

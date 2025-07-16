@@ -1,9 +1,12 @@
 // WebAudioAccess.cs
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using Microsoft.JSInterop;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Threading;
 
@@ -20,12 +23,16 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         
         // Add these fields for recording        
         private MicrophoneAudioReceivedEventHandler? _audioDataReceivedHandler;
+        private int _audioDataCallCount = 0;
         
         // Store a reference to the DotNetObjectReference to prevent it from being garbage collected
         private DotNetObjectReference<WebAudioAccess>? _dotNetReference;
 
         // Store the selected microphone device id
         private string? _selectedMicrophoneId = null;
+        
+        // Store the current diagnostic level
+        private DiagnosticLevel _diagnosticLevel = DiagnosticLevel.Normal;
         
         // Event for audio errors
         public event EventHandler<string>? AudioError;
@@ -98,6 +105,10 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                             throw new InvalidOperationException("Failed to initialize audio system. Microphone permission might be denied.");
                         }
                         Debug.WriteLine("[WebAudioAccess] Successfully initialized audio with user interaction");
+                        
+                        // Set the diagnostic level now that the module is initialized
+                        await _audioModule.InvokeVoidAsync("setDiagnosticLevel", (int)_diagnosticLevel);
+                        Debug.WriteLine($"[WebAudioAccess] Diagnostic level set to: {_diagnosticLevel}");
                     }
                     catch (Exception initEx)
                     {
@@ -129,19 +140,65 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         }
 
         [JSInvokable]
+        public Task OnJavaScriptDiagnostic(string diagnosticJson)
+        {
+            try
+            {
+                // Parse the diagnostic data
+                var diagnostic = System.Text.Json.JsonSerializer.Deserialize<JsonElement>(diagnosticJson);
+                
+                var timestamp = diagnostic.GetProperty("timestamp").GetString();
+                var message = diagnostic.GetProperty("message").GetString();
+                var dataJson = diagnostic.TryGetProperty("data", out var dataElement) && dataElement.ValueKind != JsonValueKind.Null 
+                    ? dataElement.GetString() 
+                    : null;
+                
+                // Log to Debug output with consistent formatting
+                var logMessage = $"[{timestamp}] [JS-DIAG] {message}";
+                if (!string.IsNullOrEmpty(dataJson))
+                {
+                    Debug.WriteLine($"{logMessage} | Data: {dataJson}");
+                }
+                else
+                {
+                    Debug.WriteLine(logMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WebAudioAccess] Error processing JavaScript diagnostic: {ex.Message}");
+            }
+            
+            return Task.CompletedTask;
+        }
+
+        [JSInvokable]
         public Task OnAudioDataAvailable(string base64EncodedPcm16Audio)
         {
-            Debug.WriteLine($"[WebAudioAccess] OnAudioDataAvailable called, data length: {base64EncodedPcm16Audio?.Length ?? 0}");
+            // Use counters to reduce logging noise
+            _audioDataCallCount++;
+            
+            // Only log every 50th call to reduce noise
+            if (_audioDataCallCount % 50 == 1)
+            {
+                Debug.WriteLine($"[WebAudioAccess] OnAudioDataAvailable called {_audioDataCallCount} times, data length: {base64EncodedPcm16Audio?.Length ?? 0}");
+            }
 
             if (_audioDataReceivedHandler == null)
             {
-                Debug.WriteLine("[WebAudioAccess] _audioDataReceivedHandler is null");
+                if (_audioDataCallCount % 50 == 1)
+                {
+                    Debug.WriteLine("[WebAudioAccess] _audioDataReceivedHandler is null");
+                }
                 return Task.CompletedTask;
             }
 
             if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
             {
-                Debug.WriteLine("[WebAudioAccess] Received empty audio data");
+                if (_audioDataCallCount % 50 == 1)
+                {
+                    Debug.WriteLine("[WebAudioAccess] Received empty audio data");
+                }
                 return Task.CompletedTask;
             }
 
@@ -389,6 +446,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
                 catch (Exception ex)
                 {
                     Debug.WriteLine($"[WebAudioAccess] Exception while starting recording: {ex.Message}");
+                    
+                    // Get diagnostic information when recording fails
+                    var diagnostics = await GetDiagnostics();
+                    if (diagnostics != null)
+                    {
+                        Debug.WriteLine($"[WebAudioAccess] Diagnostics when recording failed: {diagnostics}");
+                    }
+                    
                     await OnAudioError($"Failed to start recording: {ex.Message}");
                     CleanupRecording();
                     return false;
@@ -397,6 +462,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             catch (Exception ex)
             {
                 Debug.WriteLine($"[WebAudioAccess] Exception in StartRecordingAudio: {ex.Message}");
+                
+                // Get diagnostic information when recording fails completely
+                var diagnostics = await GetDiagnostics();
+                if (diagnostics != null)
+                {
+                    Debug.WriteLine($"[WebAudioAccess] Diagnostics when recording failed completely: {diagnostics}");
+                }
+                
                 await OnAudioError($"Microphone access failed: {ex.Message}");
                 return false;
             }
@@ -584,6 +657,70 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
         {
             await Task.CompletedTask;
             return _selectedMicrophoneId;
+        }
+
+        /// <summary>
+        /// Gets comprehensive diagnostic information from the JavaScript audio system.
+        /// </summary>
+        /// <returns>JSON string containing diagnostic information or null if unavailable.</returns>
+        public async Task<string?> GetDiagnostics()
+        {
+            if (_audioModule == null)
+            {
+                Debug.WriteLine("[WebAudioAccess] Cannot get diagnostics: audio module is null");
+                return null;
+            }
+
+            try
+            {
+                var diagnostics = await _audioModule.InvokeAsync<object>("getDiagnostics");
+                Debug.WriteLine($"[WebAudioAccess] Retrieved diagnostics: {diagnostics}");
+                return diagnostics?.ToString();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WebAudioAccess] Error getting diagnostics: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Sets the diagnostic logging level for the JavaScript audio system.
+        /// </summary>
+        /// <param name="level">The diagnostic level to set.</param>
+        /// <returns>True if successful, false otherwise.</returns>
+        public async Task<bool> SetDiagnosticLevel(DiagnosticLevel level)
+        {
+            if (_audioModule == null)
+            {
+                Debug.WriteLine("[WebAudioAccess] Cannot set diagnostic level: audio module is null");
+                // Store the level for when the module is initialized
+                _diagnosticLevel = level;
+                return true;
+            }
+
+            try
+            {
+                await _audioModule.InvokeVoidAsync("setDiagnosticLevel", (int)level);
+                _diagnosticLevel = level;
+                Debug.WriteLine($"[WebAudioAccess] Diagnostic level set to: {level}");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[WebAudioAccess] Error setting diagnostic level: {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets the current diagnostic logging level.
+        /// </summary>
+        /// <returns>The current diagnostic level.</returns>
+        public async Task<DiagnosticLevel> GetDiagnosticLevel()
+        {
+            await Task.CompletedTask;
+            return _diagnosticLevel;
         }
 
         async ValueTask IAsyncDisposable.DisposeAsync()

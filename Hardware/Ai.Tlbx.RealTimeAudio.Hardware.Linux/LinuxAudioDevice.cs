@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using System.Linq;
 
@@ -30,6 +31,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         private CancellationTokenSource? _recordingCts = null;
         private MicrophoneAudioReceivedEventHandler? _audioDataHandler = null;
         private Action<LogLevel, string>? _logger;
+        private DiagnosticLevel _diagnosticLevel = DiagnosticLevel.Normal;
         
         /// <summary>
         /// Event that fires when an audio error occurs in the ALSA hardware
@@ -58,6 +60,18 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
         private void Log(LogLevel level, string message)
         {
+            // Apply diagnostic level filtering
+            bool shouldLog = _diagnosticLevel switch
+            {
+                DiagnosticLevel.Off => false,
+                DiagnosticLevel.Minimal => level >= LogLevel.Error,
+                DiagnosticLevel.Normal => level >= LogLevel.Warning,
+                DiagnosticLevel.Verbose => true,
+                _ => true
+            };
+
+            if (!shouldLog) return;
+
             _logger?.Invoke(level, $"[LinuxAudioDevice] {message}");
             
             if (level >= LogLevel.Error)
@@ -68,9 +82,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             {
                 Debug.WriteLine($"[WARNING] {message}");
             }
-            else
+            else if (level == LogLevel.Info)
             {
                 Debug.WriteLine($"[INFO] {message}");
+            }
+            else if (level == LogLevel.Debug)
+            {
+                Debug.WriteLine($"[DEBUG] {message}");
             }
         }
 
@@ -1234,5 +1252,29 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 return true;
             }
         }
+
+        /// <summary>
+        /// Sets the diagnostic logging level for the Linux audio device.
+        /// </summary>
+        /// <param name="level">The diagnostic level to set.</param>
+        /// <returns>A task that resolves to true if the level was set successfully, false otherwise.</returns>
+        public async Task<bool> SetDiagnosticLevel(DiagnosticLevel level)
+        {
+            await Task.CompletedTask;
+            _diagnosticLevel = level;
+            Log(LogLevel.Info, $"Diagnostic level set to: {level}");
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the current diagnostic logging level.
+        /// </summary>
+        /// <returns>The current diagnostic level.</returns>
+        public async Task<DiagnosticLevel> GetDiagnosticLevel()
+        {
+            await Task.CompletedTask;
+            return _diagnosticLevel;
+        }
+
     }
 } 

@@ -58,6 +58,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         public double Speed { get; set; } = 1.0;
 
         /// <summary>
+        /// Diagnostic logging level for audio hardware access
+        /// </summary>
+        public DiagnosticLevel DiagnosticLevel { get; set; } = DiagnosticLevel.Normal;
+
+        /// <summary>
         /// Creates a default settings object
         /// </summary>
         public OpenAiRealTimeSettings()
@@ -86,7 +91,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
                     Model = TranscriptionModel.Whisper1
                 },
                 Modalities = new List<string> { "audio", "text" },
-                Instructions = "You are a helpful AI assistant. Be friendly, conversational, helpful, and engaging. When the user speaks interrupt your answer and listen and then answer the new question."
+                Instructions = "You are a helpful AI assistant. Be friendly, conversational, helpful, and engaging. When the user speaks interrupt your answer and listen and then answer the new question.",
+                DiagnosticLevel = DiagnosticLevel.Normal
             };
         }
         

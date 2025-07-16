@@ -11,7 +11,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
     {
         public override string Name => "get_current_time";
 
-        public override string Description => "Gets the current UTC date and time. When the AI can't get the current time.";
+        public override string Description => "Gets the current exact date and time. Just tell the user the time with seconds. If he asks also tell the date or convert the time to a given time zone, this server stands in berlin time)";
 
         public override bool? Strict => false;
 
@@ -19,12 +19,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
         /// Executes the tool to get the current time.
         /// </summary>
         /// <param name="argumentsJson">Ignored for this tool as it takes no arguments.</param>
-        /// <returns>The current UTC date and time as an ISO 8601 string.</returns>
+        /// <returns>The current date and time on the server as an ISO 8601 string.</returns>
         public override Task<string> ExecuteAsync(string argumentsJson)
         {
-            // Arguments are ignored.
-            // Return the current UTC time in a standard format (ISO 8601 is good for APIs)
-            var currentTime = DateTime.UtcNow.ToString("HH:mm:ss"); 
+            // Arguments are ignored.            
+            var currentTime = DateTime.Now.ToString("yyyy.MM.dd - HH:mm:ss"); 
             return Task.FromResult("The current time is: " + currentTime);
         }
     }

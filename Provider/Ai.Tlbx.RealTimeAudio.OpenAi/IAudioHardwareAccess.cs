@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi
 {
@@ -68,33 +68,18 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// </summary>
         /// <returns>The ID of the currently selected microphone device, or null if none is selected.</returns>
         Task<string?> GetCurrentMicrophoneDevice();
-    }
 
-    /// <summary>
-    /// Delegate for handling microphone audio data received events.
-    /// </summary>
-    /// <param name="sender">The source of the event.</param>
-    /// <param name="e">The event arguments containing the received audio data.</param>
-    public delegate void MicrophoneAudioReceivedEventHandler(object sender, MicrophoneAudioReceivedEventArgs e);
+        /// <summary>
+        /// Sets the diagnostic logging level for the audio hardware implementation.
+        /// </summary>
+        /// <param name="level">The diagnostic level to set.</param>
+        /// <returns>A task that resolves to true if the level was set successfully, false otherwise.</returns>
+        Task<bool> SetDiagnosticLevel(DiagnosticLevel level);
 
-    /// <summary>
-    /// Represents information about an audio device.
-    /// </summary>
-    public class AudioDeviceInfo
-    {
         /// <summary>
-        /// Gets or sets the unique identifier for the audio device.
+        /// Gets the current diagnostic logging level.
         /// </summary>
-        public string Id { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets the display name of the audio device.
-        /// </summary>
-        public string Name { get; set; } = string.Empty;
-        
-        /// <summary>
-        /// Gets or sets a value indicating whether this device is the system default.
-        /// </summary>
-        public bool IsDefault { get; set; }
+        /// <returns>The current diagnostic level.</returns>
+        Task<DiagnosticLevel> GetDiagnosticLevel();
     }
 }

@@ -3,6 +3,8 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using NAudio.Wave;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,6 +24,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         private MicrophoneAudioReceivedEventHandler? _audioDataReceivedHandler;
         private bool _isInitialized = false;
         private int _selectedDeviceNumber = 0; // Default to first device
+        private DiagnosticLevel _diagnosticLevel = DiagnosticLevel.Normal;
 
         public event EventHandler<string>? AudioError;
 
@@ -385,6 +388,40 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 Debug.WriteLine($"Error stopping audio client: {ex.Message}");
                 AudioError?.Invoke(this, $"Error stopping audio: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Sets the diagnostic logging level for the Windows audio device.
+        /// </summary>
+        /// <param name="level">The diagnostic level to set.</param>
+        /// <returns>A task that resolves to true if the level was set successfully, false otherwise.</returns>
+        public async Task<bool> SetDiagnosticLevel(DiagnosticLevel level)
+        {
+            await Task.CompletedTask;
+            _diagnosticLevel = level;
+            LogDiagnostic($"Diagnostic level set to: {level}");
+            return true;
+        }
+
+        /// <summary>
+        /// Gets the current diagnostic logging level.
+        /// </summary>
+        /// <returns>The current diagnostic level.</returns>
+        public async Task<DiagnosticLevel> GetDiagnosticLevel()
+        {
+            await Task.CompletedTask;
+            return _diagnosticLevel;
+        }
+
+        /// <summary>
+        /// Logs a diagnostic message respecting the diagnostic level setting.
+        /// </summary>
+        private void LogDiagnostic(string message)
+        {
+            if (_diagnosticLevel == DiagnosticLevel.Off) return;
+            
+            // Windows implementation uses Debug.WriteLine for all diagnostics
+            Debug.WriteLine($"[WindowsAudioHardware] {message}");
         }
     }
 }

@@ -9,6 +9,118 @@ let audioInitialized = false;
 let recordingInterval = null;
 let playbackSampleRate = 24000;
 let playbackNodeConnected = false;
+let sessionCount = 0;
+let lastSessionDiagnostics = null;
+
+// Diagnostic logging levels
+const DiagnosticLevel = {
+    OFF: 0,      // No diagnostics - complete bypass
+    MINIMAL: 1,  // Only critical errors and session start/end
+    NORMAL: 2,   // Key events, state changes, and errors
+    VERBOSE: 3   // All diagnostic information including data details
+};
+
+// Current diagnostic level - can be changed dynamically
+let currentDiagnosticLevel = DiagnosticLevel.NORMAL;
+
+// Diagnostic helper functions with performance-first design
+function logDiagnostic(message, data = null, level = DiagnosticLevel.NORMAL) {
+    // Complete bypass - no CPU cycles wasted when disabled
+    if (currentDiagnosticLevel === DiagnosticLevel.OFF) return;
+    
+    // Level filtering - bypass expensive operations if level too low
+    if (level > currentDiagnosticLevel) return;
+    
+    const timestamp = new Date().toISOString().substring(11, 23);
+    const logEntry = `[${timestamp}] [JS-DIAG] ${message}`;
+    
+    // Log to browser console
+    if (data) {
+        console.log(logEntry, data);
+    } else {
+        console.log(logEntry);
+    }
+    
+    // Send to C# via JSInterop
+    try {
+        const diagnosticData = {
+            timestamp,
+            message,
+            data: data ? JSON.stringify(data) : null
+        };
+        dotNetReference?.invokeMethodAsync('OnJavaScriptDiagnostic', JSON.stringify(diagnosticData));
+    } catch (error) {
+        console.error('Error sending diagnostic to C#:', error);
+    }
+}
+
+// Optimized diagnostic functions for different levels
+function logMinimal(message, data = null) {
+    if (currentDiagnosticLevel >= DiagnosticLevel.MINIMAL) {
+        logDiagnostic(message, data, DiagnosticLevel.MINIMAL);
+    }
+}
+
+function logNormal(message, data = null) {
+    if (currentDiagnosticLevel >= DiagnosticLevel.NORMAL) {
+        logDiagnostic(message, data, DiagnosticLevel.NORMAL);
+    }
+}
+
+function logVerbose(message, data = null) {
+    if (currentDiagnosticLevel >= DiagnosticLevel.VERBOSE) {
+        logDiagnostic(message, data, DiagnosticLevel.VERBOSE);
+    }
+}
+
+// Function to change diagnostic level
+function setDiagnosticLevel(level) {
+    currentDiagnosticLevel = level;
+    logMinimal(`Diagnostic level changed to: ${Object.keys(DiagnosticLevel)[level]}`);
+}
+
+function captureAudioState() {
+    return {
+        audioContext: audioContext ? {
+            state: audioContext.state,
+            sampleRate: audioContext.sampleRate,
+            baseLatency: audioContext.baseLatency,
+            outputLatency: audioContext.outputLatency
+        } : null,
+        audioInitialized,
+        isRecording,
+        playbackNodeConnected,
+        mediaStreamActive: mediaStream ? mediaStream.active : false,
+        mediaStreamTracks: mediaStream ? mediaStream.getTracks().length : 0,
+        audioWorkletNodeExists: !!audioWorkletNode,
+        playbackWorkletNodeExists: !!playbackWorkletNode,
+        sessionCount,
+        userAgent: navigator.userAgent,
+        timestamp: new Date().toISOString()
+    };
+}
+
+function saveDiagnostics(phase, success = true, error = null) {
+    const diagnostics = {
+        phase,
+        success,
+        error: error ? { name: error.name, message: error.message } : null,
+        audioState: captureAudioState(),
+        timestamp: new Date().toISOString()
+    };
+    
+    if (!lastSessionDiagnostics) {
+        lastSessionDiagnostics = [];
+    }
+    lastSessionDiagnostics.push(diagnostics);
+    
+    logVerbose(`Phase: ${phase}, Success: ${success}`, diagnostics);
+    
+    // Report to C# if significant error
+    if (!success && error) {
+        dotNetReference?.invokeMethodAsync('OnAudioError', `[${phase}] ${error.message}`);
+    }
+}
 
 // Utility function to load the audio worklet modules
 async function loadAudioWorkletModules() {
@@ -36,28 +148,46 @@ async function loadAudioWorkletModules() {
 
 // This function needs an actual user interaction before it's called
 async function initAudioWithUserInteraction() {
+    sessionCount++;
+    logNormal(`Starting initAudioWithUserInteraction - Session ${sessionCount}`);
+    
     try {
         console.log("Initializing audio with user interaction");
+        saveDiagnostics('init_start');
         
         // Create AudioContext with the correct sample rate for OpenAI/Playback
         // Check if context already exists and matches rate, reuse if possible
         if (!audioContext || audioContext.sampleRate !== playbackSampleRate) {
              if (audioContext) {
+                 logNormal(`Closing existing AudioContext (state: ${audioContext.state})`);
                  await audioContext.close(); // Close existing context if rate mismatches
              }
              audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: playbackSampleRate });
-             console.log(`AudioContext created/recreated with sample rate: ${audioContext.sampleRate}`);
+             logNormal(`AudioContext created/recreated`, {
+                 sampleRate: audioContext.sampleRate,
+                 state: audioContext.state,
+                 baseLatency: audioContext.baseLatency
+             });
         } else {
-             console.log(`Reusing existing AudioContext with sample rate: ${audioContext.sampleRate}`);
+             logVerbose(`Reusing existing AudioContext`, {
+                 sampleRate: audioContext.sampleRate,
+                 state: audioContext.state
+             });
         }
+        
+        saveDiagnostics('audiocontext_created');
 
 
-        console.log("AudioContext initial state:", audioContext.state);
+        logVerbose(`AudioContext initial state: ${audioContext.state}`);
         
         // Force resume the AudioContext - this requires user interaction in many browsers
         if (audioContext.state === 'suspended') {
+            logNormal('Attempting to resume suspended AudioContext');
             await audioContext.resume();
-            console.log("AudioContext resumed, new state:", audioContext.state);
+            logNormal(`AudioContext resumed, new state: ${audioContext.state}`);
+            saveDiagnostics('audiocontext_resumed');
+        } else {
+            logVerbose(`AudioContext already running (state: ${audioContext.state})`);
         }
         
         // Check if browser supports getUserMedia
@@ -66,20 +196,27 @@ async function initAudioWithUserInteraction() {
         }
 
         // Explicitly request microphone permissions first with a simpler configuration
-        console.log("Requesting initial microphone permission...");
+        logNormal('Requesting initial microphone permission');
         try {
             // Try getting a dummy stream to ensure permissions are granted *before* enumerating
             const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            tempStream.getTracks().forEach(track => track.stop()); // Stop the dummy stream immediately
-            console.log("Microphone permission appears granted.");
+            const tracks = tempStream.getTracks();
+            logNormal('Microphone permission granted', {
+                trackCount: tracks.length,
+                trackLabels: tracks.map(t => t.label),
+                trackStates: tracks.map(t => t.readyState)
+            });
+            tracks.forEach(track => track.stop()); // Stop the dummy stream immediately
+            saveDiagnostics('microphone_permission_granted');
         } catch (permErr) {
+            saveDiagnostics('microphone_permission_failed', false, permErr);
             if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
                 throw new Error("Microphone permission denied. Please allow microphone access in your browser settings and reload the page.");
             } else if (permErr.name === 'NotFoundError') {
                  throw new Error("No microphone detected. Please connect a microphone and reload the page.");
             }
             else {
-                 console.warn("Error requesting initial mic permission stream:", permErr);
+                 logNormal('Error requesting initial mic permission stream - continuing', permErr);
                  // Attempt to continue, maybe permissions exist from previous session
             }
         }
@@ -117,7 +254,7 @@ async function initAudioWithUserInteraction() {
 
         // Test the microphone by creating a dummy recording setup (optional but good sanity check)
         try {
-             console.log("Performing microphone initialization test...");
+             logNormal('Performing microphone initialization test');
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: {
                 channelCount: 1,
@@ -129,24 +266,55 @@ async function initAudioWithUserInteraction() {
             video: false
         });
         
-        if (stream.getAudioTracks().length === 0) {
+        const audioTracks = stream.getAudioTracks();
+        if (audioTracks.length === 0) {
                  throw new Error("No audio tracks received from microphone during test.");
              }
+
+             logVerbose('Microphone test stream created', {
+                 trackCount: audioTracks.length,
+                 trackInfo: audioTracks.map(track => ({
+                     label: track.label,
+                     kind: track.kind,
+                     enabled: track.enabled,
+                     muted: track.muted,
+                     readyState: track.readyState,
+                     settings: track.getSettings()
+                 }))
+             });
 
              const source = audioContext.createMediaStreamSource(stream);
              // Use the actual recorder processor for the test
              const testRecordNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
              source.connect(testRecordNode);
-             testRecordNode.port.onmessage = (event) => { /* Process test data if needed, or ignore */ };
+             
+             let testDataReceived = false;
+             testRecordNode.port.onmessage = (event) => {
+                 if (event.data.audioData) {
+                     testDataReceived = true;
+                     logVerbose('Microphone test data received', {
+                         dataLength: event.data.audioData.length,
+                         sampleValue: event.data.audioData[0]
+                     });
+                 }
+             };
 
-             await new Promise(resolve => setTimeout(resolve, 200)); // Short delay for test
+             await new Promise(resolve => setTimeout(resolve, 500)); // Longer delay for test
 
              testRecordNode.disconnect();
              source.disconnect(); // Disconnect source as well
              stream.getTracks().forEach(track => track.stop());
-             console.log("Microphone initialization test completed.");
+             
+             if (testDataReceived) {
+                 logNormal('Microphone initialization test completed successfully');
+                 saveDiagnostics('microphone_test_success');
+             } else {
+                 logNormal('Microphone initialization test completed but no data received');
+                 saveDiagnostics('microphone_test_no_data');
+             }
         } catch(micTestError) {
-             console.error("Microphone initialization test failed:", micTestError);
+             logNormal('Microphone initialization test failed', micTestError);
+             saveDiagnostics('microphone_test_failed', false, micTestError);
              // Decide if this is fatal or just a warning
              // throw new Error(`Microphone test failed: ${micTestError.message}`);
              dotNetReference?.invokeMethodAsync('OnAudioError', `Microphone test failed: ${micTestError.message}. Recording might not work.`);
@@ -154,10 +322,12 @@ async function initAudioWithUserInteraction() {
 
         
         audioInitialized = true;
-        console.log("Audio system fully initialized (including playback processor)");
+        logNormal('Audio system fully initialized', captureAudioState());
+        saveDiagnostics('init_complete');
         return true;
     } catch (error) {
-        console.error('Audio initialization error:', error);
+        logMinimal('Audio initialization error', error);
+        saveDiagnostics('init_failed', false, error);
         
         // Provide more specific error messages based on the error
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
@@ -180,6 +350,7 @@ async function initAudioWithUserInteraction() {
             await audioContext.close();
             audioContext = null;
         }
+        logNormal('Audio initialization failed - resources cleaned up');
         return false;
     }
 }
@@ -192,8 +363,15 @@ async function initAudioPermissions() {
 
 // Make sure AudioContext is resumed - must be called after user interaction
 async function ensureAudioContextResumed() {
+    logVerbose('ensureAudioContextResumed called', {
+        audioContextExists: !!audioContext,
+        audioContextState: audioContext?.state,
+        playbackWorkletNodeExists: !!playbackWorkletNode,
+        playbackNodeConnected
+    });
+    
     if (!audioContext) {
-        console.warn("ensureAudioContextResumed called but audioContext is null. Attempting reinitialization.");
+        logNormal('AudioContext is null, attempting reinitialization');
         // Try a lightweight init if context is missing
          try {
              audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: playbackSampleRate });
@@ -203,20 +381,25 @@ async function ensureAudioContextResumed() {
                    playbackWorkletNode = new AudioWorkletNode(audioContext, 'playback-processor');
                    playbackWorkletNode.connect(audioContext.destination);
               }
-              console.log("AudioContext created/reinitialized in ensure function, state:", audioContext.state);
+              logVerbose('AudioContext created/reinitialized in ensure function', {
+                  state: audioContext.state,
+                  sampleRate: audioContext.sampleRate
+              });
          } catch (initErr) {
-              console.error("Failed to reinitialize AudioContext in ensure function:", initErr);
+              logNormal('Failed to reinitialize AudioContext in ensure function', initErr);
               return false;
          }
     }
     
     if (audioContext.state === 'suspended') {
         try {
-            console.log("Attempting to resume AudioContext in ensure function");
+            logVerbose('Attempting to resume suspended AudioContext in ensure function');
             await audioContext.resume();
-            console.log("AudioContext resumed, new state:", audioContext.state);
+            logVerbose('AudioContext resumed in ensure function', {
+                newState: audioContext.state
+            });
         } catch (error) {
-            console.error("Failed to resume AudioContext:", error);
+            logNormal('Failed to resume AudioContext in ensure function', error);
             dotNetReference?.invokeMethodAsync('OnAudioError', 'Failed to resume audio context. Please interact with the page (click/tap).');
             return false;
         }
@@ -226,11 +409,18 @@ async function ensureAudioContextResumed() {
           try {
               playbackWorkletNode.connect(audioContext.destination);
               playbackNodeConnected = true;
-              console.log("Reconnected playback node in ensure function");
-          } catch(e){ console.error("Failed to reconnect playback node:", e); }
+              logVerbose('Reconnected playback node in ensure function');
+          } catch(e){ 
+              logNormal('Failed to reconnect playback node in ensure function', e);
+          }
       }
 
-    return audioContext.state === 'running';
+    const result = audioContext.state === 'running';
+    logVerbose('ensureAudioContextResumed result', {
+        result,
+        finalState: audioContext.state
+    });
+    return result;
 }
 
 // New function to get available microphones
@@ -306,30 +496,37 @@ function getBaseDeviceName(fullName) {
 
 // --- Recording ---
 async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
-    console.log(`Attempting to start recording with interval ${intervalMs}ms, deviceId: ${deviceId}`);
+    logNormal(`Attempting to start recording - Session ${sessionCount}`, {
+        intervalMs,
+        deviceId: deviceId || 'default',
+        currentState: captureAudioState()
+    });
+    
     if (!(await ensureAudioContextResumed())) { // Ensure context is running first!
-         console.error("Cannot start recording: AudioContext not running.");
+         logNormal('Cannot start recording: AudioContext not running');
+         saveDiagnostics('recording_start_failed_context', false, new Error('AudioContext not running'));
          dotNetReference?.invokeMethodAsync('OnAudioError', 'Cannot start recording: AudioContext is not active. Please interact with the page.');
                 return false;
             }
     if (!audioInitialized) {
-        console.warn("Audio system not yet initialized – attempting initialization now.");
+        logNormal('Audio system not yet initialized – attempting initialization now');
         const ok = await initAudioWithUserInteraction();
         if (!ok) {
-            console.error("Cannot start recording: initAudioWithUserInteraction failed.");
+            logNormal('Cannot start recording: initAudioWithUserInteraction failed');
+            saveDiagnostics('recording_start_failed_init', false, new Error('Audio system not initialized'));
             dotNetReference?.invokeMethodAsync('OnAudioError', 'Audio system not initialized. Please initialize first.');
             return false;
         }
     }
     if (isRecording) {
-        console.warn("Recording already in progress.");
+        logVerbose('Recording already in progress');
         return true; // Or false? Indicate it's already running.
     }
 
     dotNetReference = dotNetObj; // Store reference
 
     try {
-        console.log(`Attempting to get media stream for device: ${deviceId || 'default'}`);
+        logNormal(`Attempting to get media stream for device: ${deviceId || 'default'}`);
             const constraints = {
                 audio: {
                     channelCount: 1,
@@ -341,26 +538,60 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
                 },
                 video: false
             };
+        
+        logVerbose('getUserMedia constraints', constraints);
         mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-        console.log("Media stream obtained successfully.");
+        
+        const audioTracks = mediaStream.getAudioTracks();
+        logNormal('Media stream obtained successfully', {
+            streamId: mediaStream.id,
+            active: mediaStream.active,
+            trackCount: audioTracks.length,
+            trackDetails: audioTracks.map(track => ({
+                id: track.id,
+                label: track.label,
+                kind: track.kind,
+                enabled: track.enabled,
+                muted: track.muted,
+                readyState: track.readyState,
+                settings: track.getSettings()
+            }))
+        });
+        
+        saveDiagnostics('media_stream_obtained');
 
-        // Recreate recorder worklet node if needed (e.g., after context recreation)
-        if (!audioWorkletNode || audioWorkletNode.context !== audioContext) {
-             if (audioWorkletNode) {
-                 audioWorkletNode.disconnect(); // Disconnect old one if context changed
-             }
-             console.log("Creating AudioRecorderProcessor node");
-             audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
-             audioWorkletNode.onprocessorerror = (e) => console.error("Recorder processor error", e);
-            } else {
-            // Ensure it's active if reusing
-             audioWorkletNode.port.postMessage({ command: 'start' }); // Add a 'start' command if needed by processor
+        // Always recreate recorder worklet node for each recording session to ensure fresh state
+        if (audioWorkletNode) {
+            logNormal('Disconnecting existing AudioRecorderProcessor node for fresh start');
+            audioWorkletNode.disconnect();
+            audioWorkletNode = null;
         }
+        
+        logNormal('Creating fresh AudioRecorderProcessor node');
+        audioWorkletNode = new AudioWorkletNode(audioContext, 'audio-recorder-processor');
+        audioWorkletNode.onprocessorerror = (e) => {
+            logNormal('Recorder processor error', e);
+            saveDiagnostics('recorder_processor_error', false, e);
+        };
+        saveDiagnostics('recorder_worklet_created');
 
 
         // Setup message handling from the recorder worklet
+        let audioDataCount = 0;
+        let lastAudioDataTime = Date.now();
         audioWorkletNode.port.onmessage = (event) => {
             if (event.data.audioData) {
+                audioDataCount++;
+                lastAudioDataTime = Date.now();
+                
+                // Log first few audio data events and then periodically
+                if (audioDataCount <= 5 || audioDataCount % 100 === 0) {
+                    logVerbose(`Received audio data from worklet #${audioDataCount}`, {
+                        dataLength: event.data.audioData.length,
+                        sampleValue: event.data.audioData[0]
+                    });
+                }
+                
                 // Convert Int16Array buffer back to Base64 string
                 const pcm16Data = event.data.audioData; // This is Int16Array from processor
                 const buffer = pcm16Data.buffer; // Get ArrayBuffer
@@ -372,8 +603,24 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
                 const base64Audio = btoa(binary);
                 // console.log(`[js] Sending audio chunk: ${base64Audio.substring(0, 30)}...`);
                 dotNetReference?.invokeMethodAsync('OnAudioDataAvailable', base64Audio);
+            } else {
+                // Log any other message types from worklet
+                logVerbose('Received non-audio message from worklet', event.data);
             }
         };
+        
+        // Set up a timer to detect when audio data stops coming from worklet
+        const audioDataTimer = setInterval(() => {
+            if (isRecording && Date.now() - lastAudioDataTime > 2000) { // 2 seconds without data
+                logNormal('Audio data flow stopped from worklet', {
+                    lastDataTime: new Date(lastAudioDataTime).toISOString(),
+                    timeSinceLastData: Date.now() - lastAudioDataTime,
+                    isRecording,
+                    audioDataCount
+                });
+                clearInterval(audioDataTimer); // Stop checking once we've detected the issue
+            }
+        }, 1000); // Check every second
 
         const source = audioContext.createMediaStreamSource(mediaStream);
             source.connect(audioWorkletNode);
@@ -381,12 +628,17 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
         // audioWorkletNode.connect(audioContext.destination); // NO! This would cause feedback
         
         isRecording = true;
-        console.log("Recording started.");
+        logNormal('Recording started successfully', {
+            finalState: captureAudioState(),
+            sourceNodeChannelCount: source.channelCount
+        });
+        saveDiagnostics('recording_started');
         dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', true); // Notify C#
         return true;
 
     } catch (error) {
-        console.error('Error starting recording:', error);
+        logMinimal('Error starting recording', error);
+        saveDiagnostics('recording_start_failed', false, error);
         isRecording = false;
          dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', false); // Notify C#
          // Provide specific error messages
@@ -406,6 +658,7 @@ async function startRecording(dotNetObj, intervalMs = 500, deviceId = null) {
             mediaStream = null;
         }
         // Don't null out audioWorkletNode here, it might be needed later
+        logNormal('Recording start failed - cleaned up partial setup');
         return false;
     }
 }
@@ -420,24 +673,25 @@ async function stopRecording() {
         
     isRecording = false; // Set flag immediately
 
-     // Signal the worklet processor to stop processing new audio
+     // Signal the worklet processor to stop processing new audio and clean up
      if (audioWorkletNode) {
-         console.log("Sending stop command to recorder worklet.");
+         logNormal('Stopping and cleaning up AudioRecorderProcessor node');
          try {
               audioWorkletNode.port.postMessage({ command: 'stop' });
-              // Optional: Disconnect immediately? Or let it process remaining buffer?
-              // audioWorkletNode.disconnect();
-         } catch(e) { console.error("Error sending stop message to recorder worklet:", e); }
-
+              audioWorkletNode.disconnect();
+              audioWorkletNode = null; // Clear the reference so it gets recreated next time
+         } catch(e) { 
+             logNormal('Error cleaning up recorder worklet', e);
+         }
      }
 
     // Stop the media stream tracks
     if (mediaStream) {
-        console.log("Stopping media stream tracks.");
+        logNormal('Stopping media stream tracks');
         mediaStream.getTracks().forEach(track => track.stop());
         mediaStream = null;
     } else {
-        console.warn("stopRecording called but mediaStream was already null.");
+        logVerbose('stopRecording called but mediaStream was already null');
     }
 
 
@@ -449,7 +703,7 @@ async function stopRecording() {
         
      // audioChunks = []; // Clear any old chunks if array still exists
 
-    console.log("Recording stopped.");
+    logNormal('Recording stopped successfully');
     dotNetReference?.invokeMethodAsync('OnRecordingStateChanged', false); // Notify C#
 }
 
@@ -623,12 +877,21 @@ function stopMicTest() {
 // Function called by Blazor to set the .NET object reference
 function setDotNetReference(dotNetRef) {
     dotNetReference = dotNetRef;
-    console.log("DotNet reference set.");
+    logNormal('DotNet reference set');
+}
+
+// Function to get diagnostic information
+function getDiagnostics() {
+    return {
+        currentState: captureAudioState(),
+        sessionDiagnostics: lastSessionDiagnostics,
+        sessionCount
+    };
 }
 
 // Clean up function (optional but good practice)
 function cleanupAudio() {
-     console.log("Cleaning up audio resources.");
+     logNormal('Cleaning up audio resources');
      stopRecording();
      stopAudioPlayback();
      stopMicTest(); // Ensure mic test is stopped
@@ -643,7 +906,7 @@ function cleanupAudio() {
      }
 
      if (audioContext && audioContext.state !== 'closed') {
-         audioContext.close().then(() => console.log("AudioContext closed."));
+         audioContext.close().then(() => logNormal('AudioContext closed'));
          audioContext = null;
      }
      audioInitialized = false;
@@ -662,7 +925,9 @@ window.audioInterop = {
     setDotNetReference,
     startMicTest,
     stopMicTest,
-    cleanupAudio
+    cleanupAudio,
+    getDiagnostics,
+    setDiagnosticLevel
 };
 
 // Export individually for ES module consumers
@@ -676,5 +941,7 @@ export {
     setDotNetReference,
     startMicTest,
     stopMicTest,
-    cleanupAudio
+    cleanupAudio,
+    getDiagnostics,
+    setDiagnosticLevel
 };
