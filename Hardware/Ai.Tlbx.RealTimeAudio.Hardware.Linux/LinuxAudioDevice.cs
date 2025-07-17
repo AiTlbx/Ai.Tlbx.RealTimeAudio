@@ -483,6 +483,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             }
         }
 
+        public async Task<List<AudioDeviceInfo>> RequestMicrophonePermissionAndGetDevices()
+        {
+            // On Linux, this is the same as GetAvailableMicrophones() since Linux doesn't have web-style permission prompts
+            return await GetAvailableMicrophones();
+        }
+
         /// <summary>
         /// Gets the current microphone device identifier.
         /// </summary>

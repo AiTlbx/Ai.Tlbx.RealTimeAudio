@@ -642,6 +642,33 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
             }
         }
 
+        public async Task<List<AudioDeviceInfo>> RequestMicrophonePermissionAndGetDevices()
+        {
+            if (_audioModule == null)
+            {
+                await InitAudio();
+            }
+
+            if (_audioModule == null)
+            {
+                Log(LogLevel.Error, "Cannot request microphone permission: audio module is null");
+                return new List<AudioDeviceInfo>();
+            }
+
+            try
+            {
+                var devices = await _audioModule.InvokeAsync<List<AudioDeviceInfo>>("requestMicrophonePermissionAndGetDevices");
+                Log(LogLevel.Info, $"Found {devices.Count} microphone devices after permission request");
+                return devices;
+            }
+            catch (Exception ex)
+            {
+                Log(LogLevel.Error, $"Error requesting microphone permission: {ex.Message}");
+                await OnAudioError($"Failed to request microphone permission: {ex.Message}");
+                return new List<AudioDeviceInfo>();
+            }
+        }
+
         public async Task<bool> SetMicrophoneDevice(string deviceId)
         {
             if (string.IsNullOrEmpty(deviceId))

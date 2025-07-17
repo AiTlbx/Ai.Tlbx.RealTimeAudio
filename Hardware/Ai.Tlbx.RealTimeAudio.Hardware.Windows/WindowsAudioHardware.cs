@@ -313,6 +313,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             return result;
         }
 
+        public async Task<List<AudioDeviceInfo>> RequestMicrophonePermissionAndGetDevices()
+        {
+            // On Windows, this is the same as GetAvailableMicrophones() since Windows doesn't have web-style permission prompts
+            return await GetAvailableMicrophones();
+        }
+
         public async Task<bool> SetMicrophoneDevice(string deviceId)
         {
             try

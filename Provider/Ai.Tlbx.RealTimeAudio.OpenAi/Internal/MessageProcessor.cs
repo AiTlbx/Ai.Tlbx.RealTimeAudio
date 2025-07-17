@@ -25,6 +25,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         private readonly Func<object, Task> _sendMessageAsync;
         private readonly Dictionary<string, int> _audioDeltaCount = new();
         private readonly Dictionary<string, int> _transcriptDeltaCount = new();
+        private bool _hasActiveResponse = false;
 
         /// <summary>
         /// Event that fires when a new message is added to the chat history.
@@ -177,7 +178,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 case "session.updated":
                 case "input_audio_buffer.committed":
                 case "conversation.item.created":
+                    // These are expected messages that we don't need to process
+                    break;
+                
                 case "response.created":
+                    HandleResponseCreated();
+                    break;
+                    
                 case "response.output_item.added":
                 case "response.content_part.added":
                 case "response.content_part.done":
@@ -268,8 +275,15 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
             }
         }
 
+        private void HandleResponseCreated()
+        {
+            _hasActiveResponse = true;
+            _structuredLogger.Log(LogLevel.Info, "AI response started");
+        }
+
         private Task HandleResponseDoneAsync(JsonElement root)
         {
+            _hasActiveResponse = false;
             _logger.Log(LogLevel.Info, "Full response completed");
             
             try
@@ -393,9 +407,22 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
         private async Task HandleSpeechStartedAsync()
         {
-            _structuredLogger.Log(LogLevel.Info, "Speech detected - interrupting AI response");
+            _structuredLogger.Log(LogLevel.Info, "Speech detected");
             StatusChanged?.Invoke(this, "Speech detected");
-            await _sendMessageAsync(new { type = "response.cancel" });
+            
+            // Only cancel if there's an active response
+            if (_hasActiveResponse)
+            {
+                _structuredLogger.Log(LogLevel.Info, "Interrupting active AI response");
+                await _sendMessageAsync(new { type = "response.cancel" });
+                // Set to false immediately since we're cancelling
+                _hasActiveResponse = false;
+            }
+            else
+            {
+                _structuredLogger.Log(LogLevel.Info, "No active response to interrupt");
+            }
+            
             await _hardwareAccess.ClearAudioQueue();
         }
 
@@ -550,6 +577,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
         private async Task SendToolResultAsync(string callId, string result)
         {
+            // Send the tool result
             await _sendMessageAsync(new
             {
                 type = "conversation.item.create",
@@ -559,6 +587,12 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     call_id = callId,
                     output = result
                 }
+            });
+            
+            // Request a new response from the AI
+            await _sendMessageAsync(new
+            {
+                type = "response.create"
             });
         }
     }

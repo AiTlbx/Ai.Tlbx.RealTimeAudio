@@ -223,6 +223,64 @@
         }
     }
 
+    private async Task CheckMicrophonePermissionState()
+    {
+        try
+        {
+            // Check if permission is already granted without activating microphone
+            var permissionState = await JS.InvokeAsync<string>("eval", @"
+                (async function() {
+                    try {
+                        const permission = await navigator.permissions.query({name: 'microphone'});
+                        return permission.state;
+                    } catch (e) {
+                        return 'prompt';
+                    }
+                })()
+            ");
+            
+            Console.WriteLine($"Microphone permission state: {permissionState}");
+            
+            if (permissionState == "granted")
+            {
+                // Permission is already granted, get device list WITHOUT activating microphone
+                micPermissionGranted = true;
+                
+                var mics = await rta.GetAvailableMicrophones();
+                availableMicrophones = mics.Select(m => new MicrophoneSelect.MicrophoneInfo
+                {
+                    Id = m.Id,
+                    Name = m.Name,
+                    IsDefault = m.IsDefault
+                }).ToList();
+                
+                // Select default or first microphone but DON'T set it yet
+                if (availableMicrophones.Count > 0)
+                {
+                    var defaultMic = availableMicrophones.FirstOrDefault(m => m.IsDefault);
+                    selectedMicrophoneId = defaultMic?.Id ?? availableMicrophones[0].Id;
+                    Console.WriteLine($"Permission granted - found {mics.Count} microphones, selected: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
+                }
+            }
+            else
+            {
+                // Permission not granted, don't activate microphone
+                micPermissionGranted = false;
+                availableMicrophones = new List<MicrophoneSelect.MicrophoneInfo>();
+                Console.WriteLine("Microphone permission not granted - will request when user clicks grant access");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking microphone permission state: {ex.Message}");
+            micPermissionGranted = false;
+        }
+        finally
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
     private async Task RequestMicrophonePermission()
     {
         try
@@ -233,14 +291,8 @@
 
             Console.WriteLine("Explicitly requesting microphone permission...");
             
-            // Attempt to get microphones - this will trigger permission request if needed
-            var deviceInfos = await rta.GetAvailableMicrophones();
-            
-            // Small delay to ensure browser has completed loading devices
-            await Task.Delay(500);
-            
-            // Try one more time to get the latest device list with labels
-            deviceInfos = await rta.GetAvailableMicrophones();
+            // Use the new method that explicitly requests permission and gets labeled devices
+            var deviceInfos = await rta.RequestMicrophonePermissionAndGetDevices();
             
             // Convert to MicrophoneInfo objects
             availableMicrophones = deviceInfos.Select(m => new MicrophoneSelect.MicrophoneInfo
@@ -472,8 +524,8 @@
                 }
             ");
 
-            // Check microphone permission after the component is rendered
-            await CheckMicrophonePermission();
+            // Check microphone permission state without activating microphone
+            await CheckMicrophonePermissionState();
         }
     }
 

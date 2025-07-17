@@ -195,29 +195,27 @@ async function initAudioWithUserInteraction() {
             throw new Error("This browser doesn't support accessing the microphone. Please try Chrome, Firefox, or Edge.");
         }
 
-        // Explicitly request microphone permissions first with a simpler configuration
-        logNormal('Requesting initial microphone permission');
+        // Do NOT request microphone permission automatically
+        // This allows the audio system to initialize without activating the microphone
+        logNormal('Performing microphone initialization test');
         try {
-            // Try getting a dummy stream to ensure permissions are granted *before* enumerating
-            const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const tracks = tempStream.getTracks();
-            logNormal('Microphone permission granted', {
-                trackCount: tracks.length,
-                trackLabels: tracks.map(t => t.label),
-                trackStates: tracks.map(t => t.readyState)
-            });
-            tracks.forEach(track => track.stop()); // Stop the dummy stream immediately
-            saveDiagnostics('microphone_permission_granted');
-        } catch (permErr) {
-            saveDiagnostics('microphone_permission_failed', false, permErr);
-            if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
-                throw new Error("Microphone permission denied. Please allow microphone access in your browser settings and reload the page.");
-            } else if (permErr.name === 'NotFoundError') {
-                 throw new Error("No microphone detected. Please connect a microphone and reload the page.");
+            // Only test if microphone is available, don't request permission
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter(device => device.kind === 'audioinput');
+            
+            if (audioInputs.length === 0) {
+                throw new Error("No microphone detected. Please connect a microphone and reload the page.");
             }
-            else {
-                 logNormal('Error requesting initial mic permission stream - continuing', permErr);
-                 // Attempt to continue, maybe permissions exist from previous session
+            
+            logNormal('Microphone initialization test completed successfully');
+            saveDiagnostics('microphone_test_completed');
+        } catch (testErr) {
+            saveDiagnostics('microphone_test_failed', false, testErr);
+            if (testErr.name === 'NotFoundError') {
+                throw new Error("No microphone detected. Please connect a microphone and reload the page.");
+            } else {
+                logNormal('Error during microphone test - continuing', testErr);
+                // Continue anyway - permission might be available when needed
             }
         }
 
@@ -423,6 +421,44 @@ async function ensureAudioContextResumed() {
     return result;
 }
 
+// Function to explicitly request microphone permission and get devices
+async function requestMicrophonePermissionAndGetDevices() {
+    try {
+        logNormal('Explicitly requesting microphone permission');
+        
+        // First ensure audio system is initialized
+        if (!await initAudioWithUserInteraction()) {
+            throw new Error("Failed to initialize audio system");
+        }
+        
+        // Now request microphone permission
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const tracks = tempStream.getTracks();
+        
+        logNormal('Microphone permission granted', {
+            trackCount: tracks.length,
+            trackLabels: tracks.map(t => t.label),
+            trackStates: tracks.map(t => t.readyState)
+        });
+        
+        // Stop the dummy stream immediately
+        tracks.forEach(track => track.stop());
+        saveDiagnostics('microphone_permission_granted');
+        
+        // Now get the device list with proper labels
+        return await getAvailableMicrophones();
+    } catch (permErr) {
+        saveDiagnostics('microphone_permission_failed', false, permErr);
+        if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+            throw new Error("Microphone permission denied. Please allow microphone access in your browser settings and reload the page.");
+        } else if (permErr.name === 'NotFoundError') {
+            throw new Error("No microphone detected. Please connect a microphone and reload the page.");
+        } else {
+            throw new Error(`Failed to request microphone permission: ${permErr.message}`);
+        }
+    }
+}
+
 // New function to get available microphones
 async function getAvailableMicrophones() {
     try {
@@ -448,28 +484,20 @@ async function getAvailableMicrophones() {
         // Check if we already have labeled devices (this happens when permission is already granted)
         let hasLabels = devices.some(device => device.kind === 'audioinput' && device.label);
         
-        // If we don't have labels AND permission wasn't explicitly granted or prompted
+        // If we don't have labels AND permission wasn't explicitly granted, DON'T request permission
+        // Just return the devices without labels to avoid activating microphone
         if (!hasLabels && permissionStatus?.state !== 'granted') {
-            console.log("No device labels available, requesting microphone access to get labels");
-            try {
-                // Request microphone access explicitly to trigger prompt if needed and get labels
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                
-                // Now we should have permission, get the devices again with labels
-                devices = await navigator.mediaDevices.enumerateDevices();
-                
-                // Stop the stream immediately as we only needed it for permissions/labels
-                stream.getTracks().forEach(track => track.stop());
-            } catch (err) {
-                // Handle potential errors during permission request (e.g., user denies)
-                console.error("Error requesting microphone access for device labels:", err);
-                 if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                    dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Cannot list microphones.');
-                 } else {
-                     dotNetReference?.invokeMethodAsync('OnAudioError', `Error getting microphone list: ${err.message}`);
-                 }
-                return []; // Return empty list on error
-            }
+            console.log("No device labels available - permission not granted, returning devices without labels");
+            // Return devices without labels - this won't activate microphone
+            const microphones = devices
+                .filter(device => device.kind === 'audioinput')
+                .map(device => ({
+                    id: device.deviceId,
+                    name: device.label || `Microphone ${device.deviceId.substring(0, 8)}` // Provide a fallback name
+                }));
+            
+            console.log("Available microphones (no labels):", microphones);
+            return microphones;
         }
         
         // Filter for audio input devices and map to the expected format
@@ -485,6 +513,41 @@ async function getAvailableMicrophones() {
     } catch (error) {
         console.error('Error getting available microphones:', error);
         dotNetReference?.invokeMethodAsync('OnAudioError', `Failed to enumerate microphones: ${error.message}`);
+        return []; // Return empty list on error
+    }
+}
+
+// Function to explicitly request microphone permission and get labeled devices
+async function requestMicrophonePermissionAndGetDevices() {
+    try {
+        console.log("Explicitly requesting microphone permission and getting labeled devices");
+        
+        // Request microphone access explicitly to trigger prompt if needed and get labels
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        
+        // Now we should have permission, get the devices again with labels
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        
+        // Stop the stream immediately as we only needed it for permissions/labels
+        stream.getTracks().forEach(track => track.stop());
+        
+        // Filter for audio input devices and map to the expected format
+        const microphones = devices
+            .filter(device => device.kind === 'audioinput')
+            .map(device => ({
+                id: device.deviceId,
+                name: device.label || `Microphone ${device.deviceId.substring(0, 8)}` // Provide a fallback name
+            }));
+        
+        console.log("Available microphones (after permission request):", microphones);
+        return microphones;
+    } catch (error) {
+        console.error('Error requesting microphone permission:', error);
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Cannot list microphones.');
+        } else {
+            dotNetReference?.invokeMethodAsync('OnAudioError', `Error getting microphone list: ${error.message}`);
+        }
         return []; // Return empty list on error
     }
 }
@@ -918,6 +981,7 @@ function cleanupAudio() {
 window.audioInterop = {
     initAudioWithUserInteraction,
     getAvailableMicrophones,
+    requestMicrophonePermissionAndGetDevices,
     startRecording,
     stopRecording,
     playAudio,
@@ -934,6 +998,7 @@ window.audioInterop = {
 export {
     initAudioWithUserInteraction,
     getAvailableMicrophones,
+    requestMicrophonePermissionAndGetDevices,
     startRecording,
     stopRecording,
     playAudio,

@@ -57,6 +57,13 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         Task<List<AudioDeviceInfo>> GetAvailableMicrophones();
 
         /// <summary>
+        /// Requests microphone permission from the user and gets a list of available microphone devices with labels.
+        /// This method will explicitly request microphone permission and activate the microphone temporarily to get device labels.
+        /// </summary>
+        /// <returns>A list of audio device information objects representing available microphones with proper labels.</returns>
+        Task<List<AudioDeviceInfo>> RequestMicrophonePermissionAndGetDevices();
+
+        /// <summary>
         /// Sets the microphone device to use for recording.
         /// </summary>
         /// <param name="deviceId">The ID of the microphone device to use.</param>

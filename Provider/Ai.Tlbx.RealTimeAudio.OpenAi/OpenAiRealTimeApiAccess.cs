@@ -377,6 +377,26 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         }
 
         /// <summary>
+        /// Requests microphone permission from the user and gets a list of available microphone devices with labels.
+        /// This method will explicitly request microphone permission and activate the microphone temporarily to get device labels.
+        /// </summary>
+        /// <returns>A task that resolves to a list of available microphone devices with proper labels.</returns>
+        public async Task<List<AudioDeviceInfo>> RequestMicrophonePermissionAndGetDevices()
+        {
+            try
+            {
+                var devices = await _hardwareAccess.RequestMicrophonePermissionAndGetDevices();
+                MicrophoneDevicesChanged?.Invoke(this, devices);
+                return devices;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Error, $"Error requesting microphone permission and getting devices: {ex.Message}", ex);
+                return new List<AudioDeviceInfo>();
+            }
+        }
+
+        /// <summary>
         /// Sets the microphone device to use for recording.
         /// </summary>
         /// <param name="deviceId">The ID of the microphone device to use.</param>
