@@ -85,7 +85,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
                 if (!root.TryGetProperty("type", out var typeElement) || typeElement.ValueKind != JsonValueKind.String)
                 {
-                    _structuredLogger.Log(LogLevel.Warning, $"Message without valid 'type' property: {json.Substring(0, Math.Min(100, json.Length))}...");
+                    _structuredLogger.Log(LogLevel.Warn, $"Message without valid 'type' property: {json.Substring(0, Math.Min(100, json.Length))}...");
                     return;
                 }
 
@@ -189,7 +189,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     break;
 
                 default:
-                    _structuredLogger.Log(LogLevel.Debug, $"Unhandled message type: {type}", data: new { MessageType = type });
+                    _structuredLogger.Log(LogLevel.Info, $"Unhandled message type: {type}", data: new { MessageType = type });
                     break;
             }
         }
@@ -346,7 +346,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 // Only log every 20th text delta to reduce spam
                 if (_transcriptDeltaCount[key] % 20 == 1)
                 {
-                    _structuredLogger.Log(LogLevel.Debug, $"Text delta progress: {_transcriptDeltaCount[key]} chunks received", 
+                    _structuredLogger.Log(LogLevel.Info, $"Text delta progress: {_transcriptDeltaCount[key]} chunks received", 
                         data: new { CurrentLength = _currentAiMessage.Length, EventId = eventId });
                 }
             }
@@ -364,7 +364,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     var message = new OpenAiChatMessage(messageText, "assistant");
                     _chatHistory.AddMessage(message);
                     MessageAdded?.Invoke(this, message);
-                    _structuredLogger.Log(LogLevel.Debug, "Added text message to chat history");
+                    _structuredLogger.Log(LogLevel.Info, "Added text message to chat history");
                 }
                 
                 _currentAiMessage.Clear();

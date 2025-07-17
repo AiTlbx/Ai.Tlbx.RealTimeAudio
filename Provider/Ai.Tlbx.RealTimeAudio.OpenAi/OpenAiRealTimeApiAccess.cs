@@ -19,6 +19,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
     {
         private readonly IAudioHardwareAccess _hardwareAccess;
         private readonly string _apiKey;
+        private readonly Action<LogLevel, string> _logAction;
         private readonly ICustomLogger _logger;
         private readonly StructuredLogger _structuredLogger;
         
@@ -149,6 +150,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             _apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") 
                 ?? throw new InvalidOperationException("OPENAI_API_KEY environment variable is not set");
             
+            // Set up logging - use Debug.WriteLine as fallback if no log action provided
+            _logAction = logAction ?? ((level, message) => Debug.WriteLine($"[{level}] {message}"));
+            
             // Create logger
             _logger = CreateLogger(logAction);
             _structuredLogger = new StructuredLogger(_logger, "OpenAiRealTimeApiAccess");
@@ -156,6 +160,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             // Generate session ID for correlation
             var sessionId = Guid.NewGuid().ToString("N")[..8];
             _structuredLogger.SetSessionId(sessionId);
+            
+            // Set up hardware logging
+            _hardwareAccess.SetLogAction(_logAction);
             
             // Initialize internal components
             _webSocketConnection = new WebSocketConnection(_apiKey, _logger);
@@ -509,7 +516,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             {
                 if (!_webSocketConnection.IsConnected)
                 {
-                    _logger.Log(LogLevel.Warning, "Cannot send message, socket not open");
+                    _logger.Log(LogLevel.Warn, "Cannot send message, socket not open");
                     return;
                 }
 
@@ -521,6 +528,16 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 _logger.Log(LogLevel.Error, $"Error sending message: {ex.Message}", ex);
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Logs a message with the specified log level.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="message">The message to log.</param>
+        private void Log(LogLevel level, string message)
+        {
+            _logAction(level, $"[OpenAiRealTimeApiAccess] {message}");
         }
 
         private void WireUpEvents()
@@ -564,9 +581,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 StatusCategory.Error => LogLevel.Error,
                 StatusCategory.Connection => LogLevel.Info,
                 StatusCategory.Recording => LogLevel.Info,
-                StatusCategory.Processing => LogLevel.Debug,
+                StatusCategory.Processing => LogLevel.Info,
                 StatusCategory.Configuration => LogLevel.Info,
-                StatusCategory.Tool => LogLevel.Debug,
+                StatusCategory.Tool => LogLevel.Info,
                 _ => LogLevel.Info
             };
             

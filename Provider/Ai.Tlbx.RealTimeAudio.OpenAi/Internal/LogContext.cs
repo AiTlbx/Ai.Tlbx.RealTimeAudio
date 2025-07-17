@@ -28,7 +28,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         /// <param name="message">The message to log.</param>
         public void LogDebug(string message)
         {
-            _logger.Log(LogLevel.Debug, $"[{_component}] {message}");
+            _logger.Log(LogLevel.Info, $"[{_component}] {message}");
         }
 
         /// <summary>
@@ -46,7 +46,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         /// <param name="message">The message to log.</param>
         public void LogWarning(string message)
         {
-            _logger.Log(LogLevel.Warning, $"[{_component}] {message}");
+            _logger.Log(LogLevel.Warn, $"[{_component}] {message}");
         }
 
         /// <summary>
@@ -74,7 +74,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         /// <param name="message">The message to log.</param>
         public void LogCritical(string message)
         {
-            _logger.Log(LogLevel.Critical, $"[{_component}] {message}");
+            _logger.Log(LogLevel.Error, $"[{_component}] {message}");
         }
 
         /// <summary>
@@ -84,7 +84,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         /// <param name="message">The message to log.</param>
         public void LogCritical(Exception exception, string message)
         {
-            _logger.Log(LogLevel.Critical, $"[{_component}] {message}", exception);
+            _logger.Log(LogLevel.Error, $"[{_component}] {message}", exception);
         }
 
         /// <summary>

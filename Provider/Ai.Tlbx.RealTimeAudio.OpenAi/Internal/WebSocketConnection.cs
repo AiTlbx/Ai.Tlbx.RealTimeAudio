@@ -254,7 +254,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     // Log but don't treat as critical if it's a normal closure
                     if (wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                     {
-                        _logger.Log(LogLevel.Warning, "Connection closed prematurely by server");
+                        _logger.Log(LogLevel.Warn, "Connection closed prematurely by server");
                         ConnectionStatusChanged?.Invoke(this, "Connection closed by server, will attempt to reconnect if needed");
                         break; // Exit the loop to allow reconnection logic to run
                     }

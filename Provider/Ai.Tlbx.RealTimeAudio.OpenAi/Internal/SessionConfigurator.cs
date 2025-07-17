@@ -70,7 +70,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     tools = toolsConfig
                 };
 
-                _logger.Log(LogLevel.Debug, $"Session config: {sessionPayload.ToJson()}");
+                _logger.Log(LogLevel.Info, $"Session config: {sessionPayload.ToJson()}");
 
                 return new
                 {
@@ -98,7 +98,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
             try
             {
                 string configJson = MessageSerializer.SerializeCamelCase(sessionConfig);
-                _logger.Log(LogLevel.Debug, $"Serialized session config: {configJson}");
+                _logger.Log(LogLevel.Info, $"Serialized session config: {configJson}");
                 return configJson;
             }
             catch (Exception ex)

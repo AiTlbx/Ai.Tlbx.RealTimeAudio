@@ -46,7 +46,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             // Check if we're running on Linux
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
-                Debug.WriteLine("Warning: LinuxAudioDevice is designed for Linux systems only.");
+                Log(LogLevel.Warn, "LinuxAudioDevice is designed for Linux systems only.");
             }
         }
 
@@ -58,6 +58,15 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             _logger = logger;
         }
 
+        /// <summary>
+        /// Sets the logging action for this hardware component.
+        /// </summary>
+        /// <param name="logAction">Action to be called with log level and message.</param>
+        public void SetLogAction(Action<LogLevel, string> logAction)
+        {
+            _logger = logAction;
+        }
+
         private void Log(LogLevel level, string message)
         {
             // Apply diagnostic level filtering
@@ -65,7 +74,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             {
                 DiagnosticLevel.Off => false,
                 DiagnosticLevel.Minimal => level >= LogLevel.Error,
-                DiagnosticLevel.Normal => level >= LogLevel.Warning,
+                DiagnosticLevel.Normal => level >= LogLevel.Warn,
                 DiagnosticLevel.Verbose => true,
                 _ => true
             };
@@ -73,23 +82,6 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             if (!shouldLog) return;
 
             _logger?.Invoke(level, $"[LinuxAudioDevice] {message}");
-            
-            if (level >= LogLevel.Error)
-            {
-                Debug.WriteLine($"[ERROR] {message}");
-            }
-            else if (level == LogLevel.Warning)
-            {
-                Debug.WriteLine($"[WARNING] {message}");
-            }
-            else if (level == LogLevel.Info)
-            {
-                Debug.WriteLine($"[INFO] {message}");
-            }
-            else if (level == LogLevel.Debug)
-            {
-                Debug.WriteLine($"[DEBUG] {message}");
-            }
         }
 
         /// <summary>
@@ -173,7 +165,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     "snd_pcm_open");
             }
             
-            Log(LogLevel.Debug, $"Capture device opened: {_currentMicrophoneId}");
+            Log(LogLevel.Info, $"Capture device opened: {_currentMicrophoneId}");
             
             // Set hardware parameters
             ConfigurePcmDevice(_captureHandle, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, "capture");
@@ -199,7 +191,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     "snd_pcm_open");
             }
             
-            Log(LogLevel.Debug, "Playback device opened: default");
+            Log(LogLevel.Info, "Playback device opened: default");
             
             // Set hardware parameters
             ConfigurePcmDevice(_playbackHandle, DEFAULT_SAMPLE_RATE, DEFAULT_CHANNELS, "playback");
@@ -207,7 +199,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
         private void ConfigurePcmDevice(IntPtr pcmHandle, uint sampleRate, uint channels, string deviceType)
         {
-            Log(LogLevel.Debug, $"Configuring {deviceType} device: rate={sampleRate}Hz, channels={channels}");
+            Log(LogLevel.Info, $"Configuring {deviceType} device: rate={sampleRate}Hz, channels={channels}");
             
             IntPtr hwParams = IntPtr.Zero;
             
@@ -287,7 +279,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 {
                     // Non-critical, we'll log but continue
                     string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                    Log(LogLevel.Warning, $"Failed to set buffer size: {errorMsg}");
+                    Log(LogLevel.Warn, $"Failed to set buffer size: {errorMsg}");
                 }
                 
                 // Set period size
@@ -296,7 +288,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 {
                     // Non-critical, we'll log but continue
                     string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                    Log(LogLevel.Warning, $"Failed to set period size: {errorMsg}");
+                    Log(LogLevel.Warn, $"Failed to set period size: {errorMsg}");
                 }
                 
                 // Apply hardware parameters
@@ -343,7 +335,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             if (_availableMicrophones != null)
             {
-                Log(LogLevel.Debug, "Returning cached microphone list");
+                Log(LogLevel.Info, "Returning cached microphone list");
                 return _availableMicrophones;
             }
 
@@ -410,7 +402,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                                 }
                                 
                                 count++;
-                                Log(LogLevel.Debug, $"Found capture device: {name} ({desc})");
+                                Log(LogLevel.Info, $"Found capture device: {name} ({desc})");
                             }
                         }
                         
@@ -422,7 +414,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     if (!defaultFound && _availableMicrophones.Count > 0)
                     {
                         _availableMicrophones[0].IsDefault = true;
-                        Log(LogLevel.Debug, $"No default device found, setting {_availableMicrophones[0].Id} as default");
+                        Log(LogLevel.Info, $"No default device found, setting {_availableMicrophones[0].Id} as default");
                     }
                     
                     // Ensure we always have at least the "default" device
@@ -435,7 +427,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                             IsDefault = true
                         });
                         
-                        Log(LogLevel.Warning, "No capture devices found, using 'default' as fallback");
+                        Log(LogLevel.Warn, "No capture devices found, using 'default' as fallback");
                     }
                     
                     Log(LogLevel.Info, $"Found {count} capture devices");
@@ -530,7 +522,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 
                 if (!deviceExists)
                 {
-                    Log(LogLevel.Warning, $"Microphone device '{deviceId}' not found in available devices, will try anyway");
+                    Log(LogLevel.Warn, $"Microphone device '{deviceId}' not found in available devices, will try anyway");
                 }
                 
                 // If we're recording, we need to stop first
@@ -539,7 +531,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 
                 if (wasRecording)
                 {
-                    Log(LogLevel.Debug, "Recording in progress, temporarily stopping to change device");
+                    Log(LogLevel.Info, "Recording in progress, temporarily stopping to change device");
                     savedHandler = _audioDataHandler;
                     await StopRecordingAudio();
                 }
@@ -547,7 +539,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 // Close the existing capture handle if it's open
                 if (_captureHandle != IntPtr.Zero)
                 {
-                    Log(LogLevel.Debug, "Closing existing capture handle");
+                    Log(LogLevel.Info, "Closing existing capture handle");
                     AlsaNative.snd_pcm_close(_captureHandle);
                     _captureHandle = IntPtr.Zero;
                 }
@@ -577,7 +569,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 // Restart recording if it was active
                 if (wasRecording && savedHandler != null)
                 {
-                    Log(LogLevel.Debug, "Restarting recording with new device");
+                    Log(LogLevel.Info, "Restarting recording with new device");
                     await StartRecordingAudio(savedHandler);
                 }
                 
@@ -605,7 +597,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 
             if (_isRecording)
             {
-                Log(LogLevel.Warning, "Recording already in progress");
+                Log(LogLevel.Warn, "Recording already in progress");
                 return true; // Already recording
             }
 
@@ -654,7 +646,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                         int packetsRead = 0;
                         int totalBytesRead = 0;
                         
-                        Log(LogLevel.Debug, $"Recording buffer size: {bufferSize} bytes ({framesPerBuffer} frames)");
+                        Log(LogLevel.Info, $"Recording buffer size: {bufferSize} bytes ({framesPerBuffer} frames)");
                         
                         // Recording loop
                         while (!_recordingCts.Token.IsCancellationRequested)
@@ -667,13 +659,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                             {
                                 if (framesRead == -AlsaNative.EPIPE) // Overrun
                                 {
-                                    Log(LogLevel.Warning, "Buffer overrun detected, recovering");
+                                    Log(LogLevel.Warn, "Buffer overrun detected, recovering");
                                     AlsaNative.snd_pcm_recover(_captureHandle, -AlsaNative.EPIPE, 1);
                                     continue;
                                 }
                                 else if (framesRead == -AlsaNative.ESTRPIPE) // Suspended
                                 {
-                                    Log(LogLevel.Warning, "PCM device suspended, recovering");
+                                    Log(LogLevel.Warn, "PCM device suspended, recovering");
                                     while ((err = AlsaNative.snd_pcm_resume(_captureHandle)) == -AlsaNative.EAGAIN)
                                     {
                                         await Task.Delay(100, _recordingCts.Token);
@@ -721,7 +713,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                                 
                                 if (packetsRead % 100 == 0) // Log every 100 packets (10 seconds)
                                 {
-                                    Log(LogLevel.Debug, $"Recording stats: {packetsRead} packets, {totalBytesRead / 1024} KB total");
+                                    Log(LogLevel.Info, $"Recording stats: {packetsRead} packets, {totalBytesRead / 1024} KB total");
                                 }
                             }
                             
@@ -772,7 +764,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
         {
             if (!_isRecording)
             {
-                Log(LogLevel.Debug, "Not recording, nothing to stop");
+                Log(LogLevel.Info, "Not recording, nothing to stop");
                 return true; // Not recording
             }
 
@@ -788,11 +780,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to drop capture data: {errorMsg}");
+                        Log(LogLevel.Warn, $"Failed to drop capture data: {errorMsg}");
                     }
                     else
                     {
-                        Log(LogLevel.Debug, "Capture data dropped successfully");
+                        Log(LogLevel.Info, "Capture data dropped successfully");
                     }
                 }
                 
@@ -805,7 +797,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     catch (OperationCanceledException)
                     {
                         // Expected when we cancel the task
-                        Log(LogLevel.Debug, "Recording task cancelled successfully");
+                        Log(LogLevel.Info, "Recording task cancelled successfully");
                     }
                 }
                 
@@ -816,11 +808,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to prepare capture device after stopping: {errorMsg}");
+                        Log(LogLevel.Warn, $"Failed to prepare capture device after stopping: {errorMsg}");
                     }
                     else
                     {
-                        Log(LogLevel.Debug, "Capture device prepared for next use");
+                        Log(LogLevel.Info, "Capture device prepared for next use");
                     }
                 }
 
@@ -865,14 +857,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             {
                 if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
                 {
-                    Log(LogLevel.Warning, "Empty audio data provided for playback");
+                    Log(LogLevel.Warn, "Empty audio data provided for playback");
                     return false;
                 }
                 
                 // Check if sample rate matches our device settings
                 if (sampleRate != DEFAULT_SAMPLE_RATE)
                 {
-                    Log(LogLevel.Warning, $"Sample rate mismatch: Audio is {sampleRate}Hz, device is {DEFAULT_SAMPLE_RATE}Hz");
+                    Log(LogLevel.Warn, $"Sample rate mismatch: Audio is {sampleRate}Hz, device is {DEFAULT_SAMPLE_RATE}Hz");
                     // In a production system, we would implement resampling here
                 }
                 
@@ -894,7 +886,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 int bytesPerFrame = 2 * (int)DEFAULT_CHANNELS; // 16-bit = 2 bytes per sample
                 ulong frames = (ulong)(audioData.Length / bytesPerFrame);
                 
-                Log(LogLevel.Debug, $"Playing {audioData.Length} bytes ({frames} frames) of audio");
+                Log(LogLevel.Info, $"Playing {audioData.Length} bytes ({frames} frames) of audio");
                 
                 // Write all frames to the PCM device
                 long framesWritten = 0;
@@ -911,7 +903,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     {
                         if (framesWritten == -AlsaNative.EPIPE) // Underrun
                         {
-                            Log(LogLevel.Warning, "Buffer underrun detected, recovering");
+                            Log(LogLevel.Warn, "Buffer underrun detected, recovering");
                             err = AlsaNative.snd_pcm_recover(_playbackHandle, -AlsaNative.EPIPE, 1);
                             if (err < 0)
                             {
@@ -925,7 +917,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                         }
                         else if (framesWritten == -AlsaNative.ESTRPIPE) // Suspended
                         {
-                            Log(LogLevel.Warning, "PCM device suspended, recovering");
+                            Log(LogLevel.Warn, "PCM device suspended, recovering");
                             while ((err = AlsaNative.snd_pcm_resume(_playbackHandle)) == -AlsaNative.EAGAIN)
                             {
                                 Thread.Sleep(100);
@@ -971,10 +963,10 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 if (err < 0)
                 {
                     string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                    Log(LogLevel.Warning, $"Failed to drain playback device: {errorMsg}");
+                    Log(LogLevel.Warn, $"Failed to drain playback device: {errorMsg}");
                 }
                 
-                Log(LogLevel.Debug, $"Finished playing {frames} frames of audio");
+                Log(LogLevel.Info, $"Finished playing {frames} frames of audio");
                 return true;
             }
             catch (Exception ex)
@@ -1000,7 +992,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             {
                 if (_playbackHandle == IntPtr.Zero)
                 {
-                    Log(LogLevel.Debug, "No active playback handle to clear");
+                    Log(LogLevel.Info, "No active playback handle to clear");
                     return;
                 }
                 
@@ -1014,7 +1006,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to drop playback: {errorMsg}");
+                        Log(LogLevel.Warn, $"Failed to drop playback: {errorMsg}");
                     }
                     else
                     {
@@ -1026,7 +1018,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Failed to prepare playback device after dropping: {errorMsg}");
+                        Log(LogLevel.Warn, $"Failed to prepare playback device after dropping: {errorMsg}");
                     }
                     else
                     {
@@ -1052,14 +1044,14 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             // Use a flag to prevent double-disposal
             if (!_isInitialized) 
             {
-                Log(LogLevel.Debug, "Already disposed or not initialized");
+                Log(LogLevel.Info, "Already disposed or not initialized");
                 return;
             }
             
             // Stop any ongoing recording
             if (_isRecording)
             {
-                Log(LogLevel.Debug, "Stopping active recording during disposal");
+                Log(LogLevel.Info, "Stopping active recording during disposal");
                 await StopRecordingAudio();
             }
             
@@ -1070,7 +1062,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             // Cancel any pending tasks
             if (_recordingCts != null)
             {
-                Log(LogLevel.Debug, "Cancelling recording token source");
+                Log(LogLevel.Info, "Cancelling recording token source");
                 try
                 {
                     _recordingCts.Cancel();
@@ -1078,7 +1070,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 }
                 catch (Exception ex)
                 {
-                    Log(LogLevel.Warning, $"Error disposing cancellation token source: {ex.Message}");
+                    Log(LogLevel.Warn, $"Error disposing cancellation token source: {ex.Message}");
                 }
                 _recordingCts = null;
             }
@@ -1088,12 +1080,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 // Close the capture device
                 if (_captureHandle != IntPtr.Zero)
                 {
-                    Log(LogLevel.Debug, "Closing capture handle");
+                    Log(LogLevel.Info, "Closing capture handle");
                     int err = AlsaNative.snd_pcm_close(_captureHandle);
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Error closing capture device: {errorMsg}");
+                        Log(LogLevel.Warn, $"Error closing capture device: {errorMsg}");
                     }
                     _captureHandle = IntPtr.Zero;
                 }
@@ -1101,12 +1093,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
                 // Close the playback device
                 if (_playbackHandle != IntPtr.Zero)
                 {
-                    Log(LogLevel.Debug, "Closing playback handle");
+                    Log(LogLevel.Info, "Closing playback handle");
                     int err = AlsaNative.snd_pcm_close(_playbackHandle);
                     if (err < 0)
                     {
                         string errorMsg = AlsaNative.GetAlsaErrorMessage(err);
-                        Log(LogLevel.Warning, $"Error closing playback device: {errorMsg}");
+                        Log(LogLevel.Warn, $"Error closing playback device: {errorMsg}");
                     }
                     _playbackHandle = IntPtr.Zero;
                 }
@@ -1155,7 +1147,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             // Handle common error cases
             if (err == -AlsaNative.EPIPE) // Xrun (buffer over/underrun)
             {
-                Log(LogLevel.Warning, $"{operation}: Buffer xrun error (over/underrun), attempting recovery");
+                Log(LogLevel.Warn, $"{operation}: Buffer xrun error (over/underrun), attempting recovery");
                 
                 int recoverErr = AlsaNative.snd_pcm_recover(pcmHandle, -AlsaNative.EPIPE, 1);
                 if (recoverErr < 0)
@@ -1173,19 +1165,19 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             }
             else if (err == -AlsaNative.ESTRPIPE) // PCM suspended
             {
-                Log(LogLevel.Warning, $"{operation}: PCM device suspended, attempting recovery");
+                Log(LogLevel.Warn, $"{operation}: PCM device suspended, attempting recovery");
                 
                 // Wait for the device to be resumed
                 while ((err = AlsaNative.snd_pcm_resume(pcmHandle)) == -AlsaNative.EAGAIN)
                 {
-                    Log(LogLevel.Debug, "Device busy, waiting for resume...");
+                    Log(LogLevel.Info, "Device busy, waiting for resume...");
                     Thread.Sleep(100);
                 }
                 
                 if (err < 0)
                 {
                     // If resume fails, try to prepare the device
-                    Log(LogLevel.Warning, "Resume failed, attempting to prepare device");
+                    Log(LogLevel.Warn, "Resume failed, attempting to prepare device");
                     err = AlsaNative.snd_pcm_prepare(pcmHandle);
                     if (err < 0)
                     {
@@ -1203,11 +1195,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             }
             else if (err == -AlsaNative.EBADFD) // PCM in wrong state
             {
-                Log(LogLevel.Warning, $"{operation}: PCM device in wrong state, attempting recovery");
+                Log(LogLevel.Warn, $"{operation}: PCM device in wrong state, attempting recovery");
                 
                 // Get the current state
                 AlsaNative.SndPcmState state = AlsaNative.snd_pcm_state(pcmHandle);
-                Log(LogLevel.Debug, $"Current PCM state: {state}");
+                Log(LogLevel.Info, $"Current PCM state: {state}");
                 
                 // Attempt to reset to a known state
                 if (state != AlsaNative.SndPcmState.SND_PCM_STATE_PREPARED)
@@ -1229,13 +1221,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
             }
             else if (err == -AlsaNative.EAGAIN) // Resource temporarily unavailable
             {
-                Log(LogLevel.Warning, $"{operation}: Resource temporarily unavailable, retrying may help");
+                Log(LogLevel.Warn, $"{operation}: Resource temporarily unavailable, retrying may help");
                 return false; // Caller should retry
             }
             else
             {
                 // General recovery attempt for other errors
-                Log(LogLevel.Warning, $"{operation}: ALSA error: {errorMsg}, attempting general recovery");
+                Log(LogLevel.Warn, $"{operation}: ALSA error: {errorMsg}, attempting general recovery");
                 
                 int recoverErr = AlsaNative.snd_pcm_recover(pcmHandle, err, 1);
                 if (recoverErr < 0)

@@ -25,6 +25,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         private bool _isInitialized = false;
         private int _selectedDeviceNumber = 0; // Default to first device
         private DiagnosticLevel _diagnosticLevel = DiagnosticLevel.Normal;
+        private Action<LogLevel, string>? _logAction;
 
         public event EventHandler<string>? AudioError;
 
@@ -36,6 +37,25 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             _isRecording = false;
         }
 
+        /// <summary>
+        /// Sets the logging action for this hardware component.
+        /// </summary>
+        /// <param name="logAction">Action to be called with log level and message.</param>
+        public void SetLogAction(Action<LogLevel, string> logAction)
+        {
+            _logAction = logAction;
+        }
+
+        /// <summary>
+        /// Logs a message with the specified log level.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="message">The message to log.</param>
+        private void Log(LogLevel level, string message)
+        {
+            _logAction?.Invoke(level, $"[WindowsAudioHardware] {message}");
+        }
+
         public Task InitAudio()
         {
             if (_isInitialized)
@@ -45,22 +65,22 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
 
             try
             {
-                Debug.WriteLine("Initializing Windows audio hardware...");
+                Log(LogLevel.Info, "Initializing Windows audio hardware...");
 
                 int deviceCount = WaveInEvent.DeviceCount;
                 if (deviceCount == 0)
                 {
                     string error = "No audio input devices detected";
-                    Debug.WriteLine(error);
+                    Log(LogLevel.Error, error);
                     AudioError?.Invoke(this, error);
                     return Task.CompletedTask;
                 }
 
-                Debug.WriteLine($"Found {deviceCount} input devices:");
+                Log(LogLevel.Info, $"Found {deviceCount} input devices:");
                 for (int i = 0; i < deviceCount; i++)
                 {
                     var capabilities = WaveInEvent.GetCapabilities(i);
-                    Debug.WriteLine($"Device {i}: {capabilities.ProductName}");
+                    Log(LogLevel.Info, $"Device {i}: {capabilities.ProductName}");
                 }
 
                 _waveOut = new WaveOutEvent();
@@ -71,12 +91,12 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 _waveOut.Init(_bufferedWaveProvider);
 
                 _isInitialized = true;
-                Debug.WriteLine("Windows audio hardware initialized successfully");
+                Log(LogLevel.Info, "Windows audio hardware initialized successfully");
             }
             catch (Exception ex)
             {
                 string error = $"Error initializing audio: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
             return Task.CompletedTask;
@@ -101,11 +121,11 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     }
                 }
 
-                Debug.WriteLine("Starting audio recording with parameters:");
-                Debug.WriteLine($"  Sample rate: {_sampleRate}");
-                Debug.WriteLine($"  Channel count: {_channelCount}");
-                Debug.WriteLine($"  Bits per sample: {_bitsPerSample}");
-                Debug.WriteLine($"  Device number: {_selectedDeviceNumber}");
+                Log(LogLevel.Info, "Starting audio recording with parameters:");
+                Log(LogLevel.Info, $"  Sample rate: {_sampleRate}");
+                Log(LogLevel.Info, $"  Channel count: {_channelCount}");
+                Log(LogLevel.Info, $"  Bits per sample: {_bitsPerSample}");
+                Log(LogLevel.Info, $"  Device number: {_selectedDeviceNumber}");
 
                 _audioDataReceivedHandler = audioDataReceivedHandler;
                 _cancellationTokenSource = new CancellationTokenSource();
@@ -121,7 +141,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 {
                     if (e?.Exception != null)
                     {
-                        Debug.WriteLine($"Recording stopped with error: {e.Exception.Message}");
+                        Log(LogLevel.Error, $"Recording stopped with error: {e.Exception.Message}");
                         AudioError?.Invoke(this, $"Recording error: {e.Exception.Message}");
                     }
                 };
@@ -130,13 +150,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 _waveIn.StartRecording();
                 _isRecording = true;
 
-                Debug.WriteLine("Recording started successfully");
+                Log(LogLevel.Info, "Recording started successfully");
                 return true;
             }
             catch (Exception ex)
             {
                 string error = $"Error starting recording: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
                 return false;
             }
@@ -151,7 +171,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
 
             try
             {
-                Debug.WriteLine("Stopping audio recording...");
+                Log(LogLevel.Info, "Stopping audio recording...");
 
                 _waveIn?.StopRecording();
                 if (_waveIn != null)
@@ -168,13 +188,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 _isRecording = false;
                 _audioDataReceivedHandler = null;
 
-                Debug.WriteLine("Recording stopped successfully");
+                Log(LogLevel.Info, "Recording stopped successfully");
                 return Task.FromResult(true);
             }
             catch (Exception ex)
             {
                 string error = $"Error stopping recording: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
                 return Task.FromResult(false);
             }
@@ -186,7 +206,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             {
                 if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
                 {
-                    Debug.WriteLine("Warning: Attempted to play empty audio data");
+                    Log(LogLevel.Warn, "Warning: Attempted to play empty audio data");
                     return false;
                 }
 
@@ -206,7 +226,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             catch (Exception ex)
             {
                 string error = $"Error playing audio: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
                 return false;
             }
@@ -216,16 +236,16 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         {
             try
             {
-                Debug.WriteLine("Clearing audio buffer...");                
+                Log(LogLevel.Info, "Clearing audio buffer...");                
                 int bufferSizeBeforeClear = _bufferedWaveProvider?.BufferedBytes ?? 0;
                 _bufferedWaveProvider?.ClearBuffer();
                 _waveOut?.Stop();
-                Debug.WriteLine($"Audio buffer cleared. Bytes before clear: {bufferSizeBeforeClear}");
+                Log(LogLevel.Info, $"Audio buffer cleared. Bytes before clear: {bufferSizeBeforeClear}");
             }
             catch (Exception ex)
             {
                 string error = $"Error clearing audio buffer: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
             await Task.CompletedTask;
@@ -244,7 +264,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     }
 
                     string base64Audio = Convert.ToBase64String(buffer);
-                    Debug.WriteLine($"Audio data recorded: {e.BytesRecorded} bytes, base64 length: {base64Audio.Length}");
+                    Log(LogLevel.Info, $"Audio data recorded: {e.BytesRecorded} bytes, base64 length: {base64Audio.Length}");
 
                     _audioDataReceivedHandler?.Invoke(this, new MicrophoneAudioReceivedEventArgs(base64Audio));
                 }
@@ -252,7 +272,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             catch (Exception ex)
             {
                 string error = $"Error processing audio data: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
         }
@@ -269,7 +289,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                 }
 
                 int deviceCount = WaveInEvent.DeviceCount;
-                Debug.WriteLine($"Getting available microphones. Found {deviceCount} devices.");
+                Log(LogLevel.Info, $"Getting available microphones. Found {deviceCount} devices.");
 
                 for (int i = 0; i < deviceCount; i++)
                 {
@@ -280,13 +300,13 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                         Name = capabilities.ProductName,
                         IsDefault = i == 0 // Assume first device is default
                     });
-                    Debug.WriteLine($"Device {i}: {capabilities.ProductName}");
+                    Log(LogLevel.Info, $"Device {i}: {capabilities.ProductName}");
                 }
             }
             catch (Exception ex)
             {
                 string error = $"Error getting available microphones: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
             await Task.CompletedTask;
@@ -307,27 +327,27 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     if (deviceNumber >= 0 && deviceNumber < WaveInEvent.DeviceCount)
                     {
                         _selectedDeviceNumber = deviceNumber;
-                        Debug.WriteLine($"Microphone device set to: {deviceNumber}");
+                        Log(LogLevel.Info, $"Microphone device set to: {deviceNumber}");
                         return true;
                     }
                     else
                     {
                         string error = $"Invalid device number: {deviceNumber}. Must be between 0 and {WaveInEvent.DeviceCount - 1}";
-                        Debug.WriteLine(error);
+                        Log(LogLevel.Error, error);
                         AudioError?.Invoke(this, error);
                     }
                 }
                 else
                 {
                     string error = $"Invalid device ID format: {deviceId}. Must be a number.";
-                    Debug.WriteLine(error);
+                    Log(LogLevel.Error, error);
                     AudioError?.Invoke(this, error);
                 }
             }
             catch (Exception ex)
             {
                 string error = $"Error setting microphone device: {ex.Message}";
-                Debug.WriteLine($"{error}\nStackTrace: {ex.StackTrace}");
+                Log(LogLevel.Error, $"{error}\nStackTrace: {ex.StackTrace}");
                 AudioError?.Invoke(this, error);
             }
             await Task.CompletedTask;
@@ -343,7 +363,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         {
             try
             {
-                Debug.WriteLine("Disposing Windows audio hardware...");
+                Log(LogLevel.Info, "Disposing Windows audio hardware...");
                 await StopRecordingAudio();
 
                 if (_waveOut != null)
@@ -351,16 +371,16 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
                     _waveOut.Stop();
                     _waveOut.Dispose();
                     _waveOut = null;
-                    Debug.WriteLine("Wave out player disposed");
+                    Log(LogLevel.Info, "Wave out player disposed");
                 }
 
                 _bufferedWaveProvider = null;
                 _isInitialized = false;
-                Debug.WriteLine("Windows audio hardware disposed");
+                Log(LogLevel.Info, "Windows audio hardware disposed");
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error during disposal: {ex}");
+                Log(LogLevel.Error, $"Error during disposal: {ex}");
             }
         }
 
@@ -372,7 +392,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error starting audio client: {ex.Message}");
+                Log(LogLevel.Error, $"Error starting audio client: {ex.Message}");
                 AudioError?.Invoke(this, $"Error starting audio: {ex.Message}");
             }
         }
@@ -385,7 +405,7 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Error stopping audio client: {ex.Message}");
+                Log(LogLevel.Error, $"Error stopping audio client: {ex.Message}");
                 AudioError?.Invoke(this, $"Error stopping audio: {ex.Message}");
             }
         }
@@ -420,8 +440,8 @@ namespace Ai.Tlbx.RealTimeAudio.Hardware.Windows
         {
             if (_diagnosticLevel == DiagnosticLevel.Off) return;
             
-            // Windows implementation uses Debug.WriteLine for all diagnostics
-            Debug.WriteLine($"[WindowsAudioHardware] {message}");
+            // Windows implementation now uses centralized logging
+            Log(LogLevel.Info, message);
         }
     }
 }

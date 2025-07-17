@@ -81,5 +81,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// </summary>
         /// <returns>The current diagnostic level.</returns>
         Task<DiagnosticLevel> GetDiagnosticLevel();
+
+        /// <summary>
+        /// Sets the logging action for this hardware component.
+        /// </summary>
+        /// <param name="logAction">Action to be called with log level and message.</param>
+        void SetLogAction(Action<LogLevel, string> logAction);
     }
 }

@@ -2,15 +2,23 @@ using System;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
 {
-    // LOGSTAT-1: Core Enums
+    // LOGSTAT-1: Core Enums - Simple 3-level logging
     public enum LogLevel
     {
-        Trace,
-        Debug,
-        Info,
-        Warning,
-        Error,
-        Critical
+        /// <summary>
+        /// Error level - for critical errors that require attention.
+        /// </summary>
+        Error = 0,
+
+        /// <summary>
+        /// Warning level - for warnings that may indicate issues.
+        /// </summary>
+        Warn = 1,
+
+        /// <summary>
+        /// Information level - for general information and debugging.
+        /// </summary>
+        Info = 2
     }
 
     public enum StatusCategory

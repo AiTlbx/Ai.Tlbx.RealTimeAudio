@@ -132,7 +132,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
             if (string.IsNullOrEmpty(base64EncodedPcm16Audio))
             {
-                _logger.Log(LogLevel.Warning, "Cannot play empty audio data");
+                _logger.Log(LogLevel.Warn, "Cannot play empty audio data");
                 return Task.CompletedTask;
             }
 
@@ -258,7 +258,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
             {
                 if (string.IsNullOrEmpty(e.Base64EncodedPcm16Audio))
                 {
-                    _logger.Log(LogLevel.Warning, "Received empty audio data");
+                    _logger.Log(LogLevel.Warn, "Received empty audio data");
                     return;
                 }
 

@@ -131,7 +131,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
             }
             
             // Throttle repetitive audio operations
-            LogThrottled(LogLevel.Debug, $"audio_{operation}", message, TimeSpan.FromSeconds(1));
+            LogThrottled(LogLevel.Info, $"audio_{operation}", message, TimeSpan.FromSeconds(1));
         }
 
         /// <summary>
@@ -149,7 +149,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         public void LogPerformance(string operation, TimeSpan duration, object? metrics = null)
         {
             var message = $"Performance: {operation} took {duration.TotalMilliseconds:F2}ms";
-            Log(LogLevel.Debug, message, data: metrics);
+            Log(LogLevel.Info, message, data: metrics);
         }
 
         private string BuildContextualMessage(DateTime timestamp, string message, object? data)
@@ -198,21 +198,21 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 "session.updated" => LogLevel.Info,
                 "input_audio_buffer.speech_started" => LogLevel.Info,
                 "input_audio_buffer.speech_stopped" => LogLevel.Info,
-                "input_audio_buffer.committed" => LogLevel.Debug,
-                "conversation.item.created" => LogLevel.Debug,
+                "input_audio_buffer.committed" => LogLevel.Info,
+                "conversation.item.created" => LogLevel.Info,
                 "response.created" => LogLevel.Info,
                 "response.done" => LogLevel.Info,
-                "response.audio.delta" => LogLevel.Debug,
+                "response.audio.delta" => LogLevel.Info,
                 "response.audio.done" => LogLevel.Info,
-                "response.audio_transcript.delta" => LogLevel.Debug,
+                "response.audio_transcript.delta" => LogLevel.Info,
                 "response.audio_transcript.done" => LogLevel.Info,
-                "conversation.item.input_audio_transcription.delta" => LogLevel.Debug,
+                "conversation.item.input_audio_transcription.delta" => LogLevel.Info,
                 "conversation.item.input_audio_transcription.done" => LogLevel.Info,
-                "response.output_item.added" => LogLevel.Debug,
-                "response.content_part.added" => LogLevel.Debug,
-                "response.content_part.done" => LogLevel.Debug,
-                "rate_limits.updated" => LogLevel.Debug,
-                _ => LogLevel.Warning
+                "response.output_item.added" => LogLevel.Info,
+                "response.content_part.added" => LogLevel.Info,
+                "response.content_part.done" => LogLevel.Info,
+                "rate_limits.updated" => LogLevel.Info,
+                _ => LogLevel.Warn
             };
         }
 
