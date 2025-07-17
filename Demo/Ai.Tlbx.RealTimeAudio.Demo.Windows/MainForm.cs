@@ -196,7 +196,14 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
         
         private void LogMessage(LogLevel level, string message)
         {
-            Debug.WriteLine($"[{level}] {message}");
+            var logPrefix = level switch
+            {
+                LogLevel.Error => "[Error]",
+                LogLevel.Warn => "[Warn]",
+                LogLevel.Info => "[Info]",
+                _ => "[Info]"
+            };
+            Console.WriteLine($"{logPrefix} {message}");
         }
 
         private void UpdateUIState()

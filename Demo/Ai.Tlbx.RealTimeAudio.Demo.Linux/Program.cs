@@ -30,17 +30,17 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                 await _audioDevice.InitAudio();
                 Console.WriteLine("Audio device initialized successfully");
 
-                // Set up logging
+                // Set up logging - direct console output only
                 Action<LogLevel, string> logAction = (level, message) => 
                 {
-                    var logPrefix = $"[{level}]";
-                    Debug.WriteLine($"{logPrefix} {message}");
-                    
-                    // Only log Info and higher to console
-                    if (level >= LogLevel.Info)
+                    var logPrefix = level switch
                     {
-                        Console.WriteLine($"{logPrefix} {message}");
-                    }
+                        LogLevel.Error => "[Error]",
+                        LogLevel.Warn => "[Warn]",
+                        LogLevel.Info => "[Info]",
+                        _ => "[Info]"
+                    };
+                    Console.WriteLine($"{logPrefix} {message}");
                 };
 
                 // Create API access
@@ -85,7 +85,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             catch (Exception ex)
             {
                 Console.WriteLine($"Error: {ex.Message}");
-                Debug.WriteLine(ex.ToString());
+                Console.WriteLine($"Details: {ex}");
             }
             finally
             {
@@ -138,7 +138,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             catch (Exception ex)
             {
                 Console.WriteLine($"Error loading configuration: {ex.Message}");
-                Debug.WriteLine(ex.ToString());
+                Console.WriteLine($"Details: {ex}");
             }
         }
 
@@ -188,7 +188,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             catch (Exception ex)
             {
                 Console.WriteLine($"Input handling error: {ex.Message}");
-                Debug.WriteLine(ex.ToString());
+                Console.WriteLine($"Details: {ex}");
                 _exitEvent.Set();
             }
         }

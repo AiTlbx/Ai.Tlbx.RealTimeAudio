@@ -5,6 +5,7 @@
 @using Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
 @using Ai.Tlbx.RealTime.WebUi.Components
 @using Ai.Tlbx.RealTimeAudio.Demo.Web
+@using static Ai.Tlbx.RealTimeAudio.OpenAi.Models.LogLevel
 @rendermode InteractiveServer
 @inject OpenAiRealTimeApiAccess rta
 @inject IJSRuntime JS
@@ -152,6 +153,12 @@
         }
     }
     
+    // Logging method using the centralized logging system
+    private void Log(LogLevel level, string message)
+    {
+        rta.LogMessage(level, $"[Home] {message}");
+    }
+    
     // Simulate a property changed event for state monitoring
     private event EventHandler? PropertyChanged;
     
@@ -172,7 +179,7 @@
                 mics.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
             
             micPermissionGranted = hasRealDeviceNames;
-            Console.WriteLine($"Initial permission check: Permission granted: {micPermissionGranted}, Found {mics.Count} microphones");
+            Log(LogLevel.Info, $"Initial permission check: Permission granted: {micPermissionGranted}, Found {mics.Count} microphones");
             
             if (micPermissionGranted)
             {
@@ -191,7 +198,7 @@
                     selectedMicrophoneId = defaultMic?.Id ?? availableMicrophones[0].Id;
                     await rta.SetMicrophoneDevice(selectedMicrophoneId);
                     
-                    Console.WriteLine($"Initially selected microphone: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
+                    Log(LogLevel.Info, $"Initially selected microphone: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
                 }
             }
             else if (mics.Count > 0)
@@ -204,17 +211,17 @@
                     Name = m.Name,
                     IsDefault = m.IsDefault
                 }).ToList();
-                Console.WriteLine("Microphones found but without proper labels - permission needed");
+                Log(LogLevel.Info, "Microphones found but without proper labels - permission needed");
             }
             else
             {
-                Console.WriteLine("No microphones found or permission not granted");
+                Log(LogLevel.Warn, "No microphones found or permission not granted");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error checking microphone permission: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Log(LogLevel.Error, $"Error checking microphone permission: {ex.Message}");
+            Log(LogLevel.Error, $"Stack trace: {ex.StackTrace}");
             micPermissionGranted = false;
         }
         finally
@@ -239,7 +246,7 @@
                 })()
             ");
             
-            Console.WriteLine($"Microphone permission state: {permissionState}");
+            Log(LogLevel.Info, $"Microphone permission state: {permissionState}");
             
             if (permissionState == "granted")
             {
@@ -259,7 +266,7 @@
                 {
                     var defaultMic = availableMicrophones.FirstOrDefault(m => m.IsDefault);
                     selectedMicrophoneId = defaultMic?.Id ?? availableMicrophones[0].Id;
-                    Console.WriteLine($"Permission granted - found {mics.Count} microphones, selected: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
+                    Log(LogLevel.Info, $"Permission granted - found {mics.Count} microphones, selected: {availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId)?.Name ?? "Unknown"}");
                 }
             }
             else
@@ -267,12 +274,12 @@
                 // Permission not granted, don't activate microphone
                 micPermissionGranted = false;
                 availableMicrophones = new List<MicrophoneSelect.MicrophoneInfo>();
-                Console.WriteLine("Microphone permission not granted - will request when user clicks grant access");
+                Log(LogLevel.Info, "Microphone permission not granted - will request when user clicks grant access");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error checking microphone permission state: {ex.Message}");
+            Log(LogLevel.Error, $"Error checking microphone permission state: {ex.Message}");
             micPermissionGranted = false;
         }
         finally
@@ -289,7 +296,7 @@
             // isLoadingMicrophones = true;
             await InvokeAsync(StateHasChanged);
 
-            Console.WriteLine("Explicitly requesting microphone permission...");
+            Log(LogLevel.Info, "Explicitly requesting microphone permission...");
             
             // Use the new method that explicitly requests permission and gets labeled devices
             var deviceInfos = await rta.RequestMicrophonePermissionAndGetDevices();
@@ -306,7 +313,7 @@
             micPermissionGranted = deviceInfos.Count > 0 && 
                 deviceInfos.Any(m => !string.IsNullOrEmpty(m.Name) && !m.Name.StartsWith("Microphone "));
             
-            Console.WriteLine($"After permission request: Permission granted: {micPermissionGranted}, Found {deviceInfos.Count} microphones");
+            Log(LogLevel.Info, $"After permission request: Permission granted: {micPermissionGranted}, Found {deviceInfos.Count} microphones");
             
             // If we have microphones with permission, select one
             if (micPermissionGranted && availableMicrophones.Count > 0)
@@ -328,18 +335,18 @@
                 {
                     await rta.SetMicrophoneDevice(selectedMicrophoneId);
                     var selectedMic = availableMicrophones.FirstOrDefault(m => m.Id == selectedMicrophoneId);
-                    Console.WriteLine($"Selected microphone: {selectedMic?.Name ?? "Unknown"}");
+                    Log(LogLevel.Info, $"Selected microphone: {selectedMic?.Name ?? "Unknown"}");
                 }
             }
             else
             {
-                Console.WriteLine("Permission not granted or no microphones with labels found");
+                Log(LogLevel.Warn, "Permission not granted or no microphones with labels found");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error requesting microphone permission: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Log(LogLevel.Error, $"Error requesting microphone permission: {ex.Message}");
+            Log(LogLevel.Error, $"Stack trace: {ex.StackTrace}");
         }
         finally
         {
@@ -417,7 +424,7 @@
             if (!string.IsNullOrEmpty(deviceToUse))
             {
                 await rta.SetMicrophoneDevice(deviceToUse);
-                Console.WriteLine($"Using microphone: {deviceName} for recording session");
+                Log(LogLevel.Info, $"Using microphone: {deviceName} for recording session");
             }
 
             // Get current settings or create new settings
@@ -442,8 +449,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error starting session: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Log(LogLevel.Error, $"Error starting session: {ex.Message}");
+            Log(LogLevel.Error, $"Stack trace: {ex.StackTrace}");
         }
     }
 
@@ -460,8 +467,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error stopping session: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Log(LogLevel.Error, $"Error stopping session: {ex.Message}");
+            Log(LogLevel.Error, $"Stack trace: {ex.StackTrace}");
         }
     }    
 
@@ -483,7 +490,7 @@
             if (!string.IsNullOrEmpty(deviceToUse))
             {
                 await rta.SetMicrophoneDevice(deviceToUse);
-                Console.WriteLine($"Testing microphone: {deviceName}");
+                Log(LogLevel.Info, $"Testing microphone: {deviceName}");
             }
             
             await rta.TestMicrophone();
@@ -498,8 +505,8 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error testing microphone: {ex.Message}");
-            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            Log(LogLevel.Error, $"Error testing microphone: {ex.Message}");
+            Log(LogLevel.Error, $"Stack trace: {ex.StackTrace}");
         }
     }
 

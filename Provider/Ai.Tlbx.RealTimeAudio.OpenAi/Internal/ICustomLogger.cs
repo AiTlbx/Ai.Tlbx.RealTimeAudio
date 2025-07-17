@@ -5,6 +5,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 {
     /// <summary>
     /// Custom logger interface for internal logging within the OpenAI provider.
+    /// This interface supports the centralized logging strategy where all logging
+    /// flows up through Action&lt;LogLevel, string&gt; delegates to OpenAiRealTimeApiAccess.
     /// </summary>
     internal interface ICustomLogger
     {
@@ -26,6 +28,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
     /// <summary>
     /// Logger implementation that uses an action delegate.
+    /// This is the primary implementation that forwards all logging through the centralized
+    /// Action&lt;LogLevel, string&gt; delegate, ensuring all logs flow to the user-configured
+    /// logging system in OpenAiRealTimeApiAccess.
     /// </summary>
     internal sealed class ActionCustomLogger : ICustomLogger
     {
@@ -62,32 +67,4 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         }
     }
 
-    /// <summary>
-    /// Logger implementation that uses Debug.WriteLine for output.
-    /// </summary>
-    internal sealed class DebugCustomLogger : ICustomLogger
-    {
-        /// <summary>
-        /// Logs a message with the specified log level.
-        /// </summary>
-        /// <param name="level">The log level.</param>
-        /// <param name="message">The message to log.</param>
-        public void Log(LogLevel level, string message)
-        {
-            System.Diagnostics.Debug.WriteLine($"[{level}] {message}");
-        }
-
-        /// <summary>
-        /// Logs a message with the specified log level and exception.
-        /// </summary>
-        /// <param name="level">The log level.</param>
-        /// <param name="message">The message to log.</param>
-        /// <param name="exception">The exception to log.</param>
-        public void Log(LogLevel level, string message, Exception exception)
-        {
-            System.Diagnostics.Debug.WriteLine($"[{level}] {message}");
-            System.Diagnostics.Debug.WriteLine($"Exception: {exception.Message}");
-            System.Diagnostics.Debug.WriteLine($"StackTrace: {exception.StackTrace}");
-        }
-    }
 }

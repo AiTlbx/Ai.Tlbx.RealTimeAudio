@@ -517,40 +517,6 @@ async function getAvailableMicrophones() {
     }
 }
 
-// Function to explicitly request microphone permission and get labeled devices
-async function requestMicrophonePermissionAndGetDevices() {
-    try {
-        console.log("Explicitly requesting microphone permission and getting labeled devices");
-        
-        // Request microphone access explicitly to trigger prompt if needed and get labels
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        
-        // Now we should have permission, get the devices again with labels
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        
-        // Stop the stream immediately as we only needed it for permissions/labels
-        stream.getTracks().forEach(track => track.stop());
-        
-        // Filter for audio input devices and map to the expected format
-        const microphones = devices
-            .filter(device => device.kind === 'audioinput')
-            .map(device => ({
-                id: device.deviceId,
-                name: device.label || `Microphone ${device.deviceId.substring(0, 8)}` // Provide a fallback name
-            }));
-        
-        console.log("Available microphones (after permission request):", microphones);
-        return microphones;
-    } catch (error) {
-        console.error('Error requesting microphone permission:', error);
-        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-            dotNetReference?.invokeMethodAsync('OnAudioError', 'Microphone permission denied. Cannot list microphones.');
-        } else {
-            dotNetReference?.invokeMethodAsync('OnAudioError', `Error getting microphone list: ${error.message}`);
-        }
-        return []; // Return empty list on error
-    }
-}
 
 // Helper function to extract base device name
 function getBaseDeviceName(fullName) {

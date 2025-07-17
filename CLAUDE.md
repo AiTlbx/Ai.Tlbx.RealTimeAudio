@@ -117,6 +117,20 @@ The project follows German code style guidelines from `CodeStyleGuide.md`:
 - **Modern C# Features**: Use `var`, pattern matching, null-conditional operators, expression-bodied members where appropriate
 - **Comments**: Minimal - only for complex logic
 
+### Logging Strategy
+
+This codebase uses a **centralized logging architecture** detailed in [`LoggingStrategy.md`](LoggingStrategy.md). 
+
+**⚠️ CRITICAL: DO NOT USE ILogger<T> OR Microsoft.Extensions.Logging**
+
+All logging flows from lower layers up to `OpenAiRealTimeApiAccess` where users configure their preferred logging approach. This pattern:
+- Maintains clean architecture boundaries
+- Allows user choice of logging framework
+- Simplifies testing and debugging
+- Prevents tight coupling to Microsoft logging
+
+Always use `Action<LogLevel, string>` for logging delegation and forward logs up through natural architectural layers.
+
 ### Important Notes
 
 - The project targets .NET 9.0

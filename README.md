@@ -148,6 +148,14 @@ dotnet add package Ai.Tlbx.RealTimeAudio.Hardware.Web
 - Linux with ALSA support (for Linux-specific components)
 - Modern web browser with Web Audio API support (for Web components)
 
+## Architecture & Development
+
+- **Code Style**: See [`CodeStyleGuide.md`](CodeStyleGuide.md) for German-style coding conventions
+- **Logging Strategy**: See [`LoggingStrategy.md`](LoggingStrategy.md) for centralized logging architecture
+- **Development Guide**: See [`CLAUDE.md`](CLAUDE.md) for development environment setup
+
+**⚠️ Important**: This codebase uses a centralized logging pattern. **Do not use `ILogger<T>` or Microsoft.Extensions.Logging** - all logging flows up to `OpenAiRealTimeApiAccess` where users configure their preferred logging approach.
+
 ## License
 
 MIT 

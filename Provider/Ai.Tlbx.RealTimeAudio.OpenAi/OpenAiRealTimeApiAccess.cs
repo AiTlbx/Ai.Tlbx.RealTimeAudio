@@ -560,6 +560,16 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             _logAction(level, $"[OpenAiRealTimeApiAccess] {message}");
         }
 
+        /// <summary>
+        /// Logs a message using the centralized logging system.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="message">The message to log.</param>
+        public void LogMessage(LogLevel level, string message)
+        {
+            _logAction(level, message);
+        }
+
         private void WireUpEvents()
         {
             // WebSocket events
@@ -620,12 +630,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
 
         private ICustomLogger CreateLogger(Action<LogLevel, string>? logAction)
         {
-            if (logAction != null)
-            {
-                return new ActionCustomLogger(logAction);
-            }
-            
-            return new DebugCustomLogger();
+            // Always use ActionCustomLogger with the centralized log action
+            // This ensures all logging goes through the same centralized path
+            return new ActionCustomLogger(_logAction);
         }
 
         /// <summary>

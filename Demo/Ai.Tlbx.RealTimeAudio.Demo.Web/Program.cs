@@ -1,6 +1,7 @@
 using Ai.Tlbx.RealTimeAudio.Demo.Web.Components;
 using Ai.Tlbx.RealTimeAudio.Hardware.Web;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
+using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using Ai.Tlbx.RealTime.WebUi;
 
 namespace Ai.Tlbx.RealTimeAudio.Demo.Web;
@@ -18,11 +19,25 @@ public class Program
 
         builder.Services.AddScoped<IAudioHardwareAccess, WebAudioAccess>();
 
-        // Register OpenAiRealTimeApiAccess with hardware access
+        // Register OpenAiRealTimeApiAccess with hardware access and direct console logging
         builder.Services.AddScoped(sp =>
         {
             var hardwareAccess = sp.GetRequiredService<IAudioHardwareAccess>();
-            return new OpenAiRealTimeApiAccess(hardwareAccess);
+            
+            // Create log action that writes directly to console (bypassing ASP.NET Core logging)
+            Action<Ai.Tlbx.RealTimeAudio.OpenAi.Models.LogLevel, string> logAction = (level, message) =>
+            {
+                var levelPrefix = level switch
+                {
+                    Ai.Tlbx.RealTimeAudio.OpenAi.Models.LogLevel.Error => "[Error]",
+                    Ai.Tlbx.RealTimeAudio.OpenAi.Models.LogLevel.Warn => "[Warn]",
+                    Ai.Tlbx.RealTimeAudio.OpenAi.Models.LogLevel.Info => "[Info]",
+                    _ => "[Info]"
+                };
+                Console.WriteLine($"{levelPrefix} {message}");
+            };
+            
+            return new OpenAiRealTimeApiAccess(hardwareAccess, logAction);
         });
         
         // Register IAudioInteropService
