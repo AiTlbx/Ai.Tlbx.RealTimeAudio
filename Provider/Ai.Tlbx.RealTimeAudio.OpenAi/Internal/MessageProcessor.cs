@@ -28,15 +28,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         /// </summary>
         public event EventHandler<OpenAiChatMessage>? MessageAdded;
 
-        /// <summary>
-        /// Event that fires when a tool call is requested.
-        /// </summary>
-        public event EventHandler<ToolCallEventArgs>? ToolCallRequested;
-
-        /// <summary>
-        /// Event that fires when a tool result is available.
-        /// </summary>
-        public event EventHandler<(string ToolName, string Result)>? ToolResultAvailable;
 
         /// <summary>
         /// Event that fires when the connection status changes.
@@ -526,7 +517,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                         MessageAdded?.Invoke(this, toolResultMessage);
                         
                         await SendToolResultAsync(callId, result);
-                        ToolResultAvailable?.Invoke(this, (tool.Name ?? "unknown_tool", result));
                     }
                     catch (Exception ex)
                     {
@@ -539,10 +529,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                         
                         await SendToolResultAsync(callId, errorResult);
                     }
-                }
-                else if (ToolCallRequested != null)
-                {
-                    ToolCallRequested?.Invoke(this, new ToolCallEventArgs(callId, functionName, argumentsJson));
                 }
                 else
                 {

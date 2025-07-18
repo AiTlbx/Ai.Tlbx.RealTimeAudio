@@ -44,17 +44,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         /// Event that fires when a new message is added to the chat history.
         /// </summary>
         public event EventHandler<OpenAiChatMessage>? MessageAdded;
+                        
         
-        
-        /// <summary>
-        /// Event that fires when a tool result is available.
-        /// </summary>
-        public event EventHandler<(string ToolName, string Result)>? ToolResultAvailable;
-        
-        /// <summary>
-        /// Event that fires when a tool call is requested.
-        /// </summary>
-        public event EventHandler<ToolCallEventArgs>? ToolCallRequested;
         
         /// <summary>
         /// Event that fires when the list of microphone devices changes.
@@ -666,8 +657,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             
             // Wire up message processor events
             _messageProcessor.MessageAdded += (sender, message) => MessageAdded?.Invoke(this, message);
-            _messageProcessor.ToolCallRequested += (sender, args) => ToolCallRequested?.Invoke(this, args);
-            _messageProcessor.ToolResultAvailable += (sender, result) => ToolResultAvailable?.Invoke(this, result);
             _messageProcessor.StatusChanged += (sender, status) => {
                 _connectionStatus = status;
                 ConnectionStatusChanged?.Invoke(this, status);
