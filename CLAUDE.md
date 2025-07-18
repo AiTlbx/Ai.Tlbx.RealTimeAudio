@@ -4,16 +4,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Important Shell Commands
 
-**ALWAYS use `pwsh` instead of `powershell`** - This system uses PowerShell Core (pwsh) as the default shell.
-
-### PowerShell Execution Policy
-Before running PowerShell scripts, the execution policy needs to be set ONCE per session:
-```bash
-pwsh -Command "Set-ExecutionPolicy -ExecutionPolicy Bypass -Scope Process"
-```
-
-If you encounter execution policy errors, ask the user to run the above command once for their session.
-
 ## Common Development Commands
 
 Build the entire solution:
@@ -106,16 +96,7 @@ Version is tracked in `version.txt` and auto-incremented by `publish-nuget.ps1`.
 
 ### Code Style Guidelines
 
-The project follows German code style guidelines from `CodeStyleGuide.md`:
-- **Brace Style**: Allman style (opening brace on new line)
-- **Indentation**: 4 spaces, no tabs
-- **Naming**: 
-  - PascalCase for public members
-  - _camelCase for private fields (with underscore prefix)
-  - Async methods end with `Async` suffix
-- **Access Modifiers**: Always explicit
-- **Modern C# Features**: Use `var`, pattern matching, null-conditional operators, expression-bodied members where appropriate
-- **Comments**: Minimal - only for complex logic
+The project follows German code style guidelines from `CodeStyleGuide.md`.
 
 ### Logging Strategy
 

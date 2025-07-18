@@ -1,4 +1,3 @@
-using System;
 using System.Buffers;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal

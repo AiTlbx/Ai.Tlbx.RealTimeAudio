@@ -1,5 +1,3 @@
-using System.Threading.Tasks;
-
 namespace Ai.Tlbx.RealTime.WebUi
 {
     public interface IAudioInteropService

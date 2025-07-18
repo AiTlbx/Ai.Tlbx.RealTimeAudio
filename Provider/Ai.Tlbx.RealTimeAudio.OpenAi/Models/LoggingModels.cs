@@ -1,5 +1,3 @@
-using System;
-
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
 {
     // LOGSTAT-1: Core Enums - Simple 3-level logging

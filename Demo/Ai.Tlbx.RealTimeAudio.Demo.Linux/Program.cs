@@ -17,36 +17,37 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
 
         static async Task Main(string[] args)
         {
-            Console.WriteLine("Linux Real-Time Audio Demo");
-            Console.WriteLine("==========================");
+            // Set up logging - direct console output only
+            Action<LogLevel, string> logAction = (level, message) => 
+            {
+                var logPrefix = level switch
+                {
+                    LogLevel.Error => "[Error]",
+                    LogLevel.Warn => "[Warn]",
+                    LogLevel.Info => "[Info]",
+                    _ => "[Info]"
+                };
+                Debug.WriteLine($"{logPrefix} {message}");
+            };
+
+            logAction(LogLevel.Info, "Linux Real-Time Audio Demo");
+            logAction(LogLevel.Info, "==========================");
 
             // Load configuration
-            LoadConfiguration();
+            LoadConfiguration(logAction);
 
             // Set up audio
             try
             {
                 _audioDevice = new LinuxAudioDevice();
                 await _audioDevice.InitAudio();
-                Console.WriteLine("Audio device initialized successfully");
+                logAction(LogLevel.Info, "Audio device initialized successfully");
 
-                // Set up logging - direct console output only
-                Action<LogLevel, string> logAction = (level, message) => 
-                {
-                    var logPrefix = level switch
-                    {
-                        LogLevel.Error => "[Error]",
-                        LogLevel.Warn => "[Warn]",
-                        LogLevel.Info => "[Info]",
-                        _ => "[Info]"
-                    };
-                    Console.WriteLine($"{logPrefix} {message}");
-                };
 
                 // Create API access
                 if (string.IsNullOrEmpty(_openAiApiKey))
                 {
-                    Console.WriteLine("No OpenAI API key found. Please update the appsettings.json file.");
+                    logAction(LogLevel.Error, "No OpenAI API key found. Please update the appsettings.json file.");
                     return;
                 }
 
@@ -67,25 +68,25 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                 // Subscribe to status updates
                 _apiAccess.StatusUpdated += (sender, e) =>
                 {
-                    Console.WriteLine($"Status: {e.Category} - {e.Code}: {e.Message}");
+                    logAction(LogLevel.Info, $"Status: {e.Category} - {e.Code}: {e.Message}");
                 };
                 
                 // UI and controls
-                Console.WriteLine("\nCommands:");
-                Console.WriteLine(" 's' - Start conversation");
-                Console.WriteLine(" 'p' - Pause/Resume");
-                Console.WriteLine(" 'q' - Quit");
+                logAction(LogLevel.Info, "\nCommands:");
+                logAction(LogLevel.Info, " 's' - Start conversation");
+                logAction(LogLevel.Info, " 'p' - Pause/Resume");
+                logAction(LogLevel.Info, " 'q' - Quit");
 
                 // Start input handling in a separate task
-                _ = Task.Run(() => HandleUserInput());
+                _ = Task.Run(() => HandleUserInput(logAction));
                 
                 // Wait for exit signal
                 _exitEvent.WaitOne();
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error: {ex.Message}");
-                Console.WriteLine($"Details: {ex}");
+                logAction(LogLevel.Error, $"Error: {ex.Message}");
+                logAction(LogLevel.Error, $"Details: {ex}");
             }
             finally
             {
@@ -102,7 +103,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             }
         }
 
-        private static void LoadConfiguration()
+        private static void LoadConfiguration(Action<LogLevel, string> logAction)
         {
             try
             {
@@ -125,7 +126,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                 }
                 else
                 {
-                    Console.WriteLine("Warning: appsettings.json not found.");
+                    logAction(LogLevel.Warn, "Warning: appsettings.json not found.");
                 }
                 
                 // Try to load from environment variables (useful for containers)
@@ -137,12 +138,12 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading configuration: {ex.Message}");
-                Console.WriteLine($"Details: {ex}");
+                logAction(LogLevel.Error, $"Error loading configuration: {ex.Message}");
+                logAction(LogLevel.Error, $"Details: {ex}");
             }
         }
 
-        private static async void HandleUserInput()
+        private static async void HandleUserInput(Action<LogLevel, string> logAction)
         {
             try
             {
@@ -158,7 +159,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                             if (!isRunning)
                             {
                                 isRunning = true;
-                                Console.WriteLine("Starting conversation...");
+                                logAction(LogLevel.Info, "Starting conversation...");
                                 var apiSettings = OpenAiRealTimeSettings.CreateDefault();
                                 // Override the model if specified
                                 if (!string.IsNullOrEmpty(_openAiModel))
@@ -173,12 +174,12 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                             if (isRunning)
                             {
                                 // Note: The current API doesn't seem to have direct pause/resume functionality
-                                Console.WriteLine("Pause/Resume functionality would be here if available in the API");
+                                logAction(LogLevel.Info, "Pause/Resume functionality would be here if available in the API");
                             }
                             break;
                             
                         case 'q':
-                            Console.WriteLine("Exiting...");
+                            logAction(LogLevel.Info, "Exiting...");
                             _cts.Cancel();
                             _exitEvent.Set();
                             break;
@@ -187,8 +188,8 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Input handling error: {ex.Message}");
-                Console.WriteLine($"Details: {ex}");
+                logAction(LogLevel.Error, $"Input handling error: {ex.Message}");
+                logAction(LogLevel.Error, $"Details: {ex}");
                 _exitEvent.Set();
             }
         }

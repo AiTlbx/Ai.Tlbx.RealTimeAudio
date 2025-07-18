@@ -53,7 +53,7 @@ await using (var audioStream = await openAiClient.CreateStreamingSessionAsync())
     // Handle real-time transcription
     audioStream.OnTranscription += (sender, text) =>
     {
-        Console.WriteLine($"Transcription: {text}");
+        Debug.WriteLine($"Transcription: {text}");
     };
     
     // Wait for completion
@@ -88,7 +88,7 @@ using Ai.Tlbx.RealTimeAudio.Hardware.Windows;
 var devices = AudioDeviceManager.GetAvailableInputDevices();
 foreach (var device in devices)
 {
-    Console.WriteLine($"Device: {device.Name}, ID: {device.Id}");
+    Debug.WriteLine($"Device: {device.Name}, ID: {device.Id}");
 }
 
 // Initialize an audio capture session
@@ -101,7 +101,7 @@ captureSession.StartCapture(deviceId: devices[0].Id);
 captureSession.OnAudioDataAvailable += (sender, data) =>
 {
     // Process audio buffer
-    Console.WriteLine($"Received {data.Length} audio samples");
+    Debug.WriteLine($"Received {data.Length} audio samples");
 };
 
 // Wait for some time

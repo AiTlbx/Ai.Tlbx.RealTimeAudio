@@ -15,11 +15,9 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
-    <File Path="CodeStyleGuide.md" />
     <File Path="publish-nuget.ps1" />
     <File Path="README.md" />
     <File Path="version.txt" />
-    <File Path="WorkItems.md" />
   </Folder>
   <Folder Name="/WebUi/">
     <Project Path="WebUi/Ai.Tlbx.RealTime.WebUi/Ai.Tlbx.RealTime.WebUi.csproj" />

@@ -1,4 +1,3 @@
-using System;
 using System.Runtime.Serialization;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux

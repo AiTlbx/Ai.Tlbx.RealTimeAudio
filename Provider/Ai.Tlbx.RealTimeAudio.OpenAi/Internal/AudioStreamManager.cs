@@ -1,5 +1,3 @@
-using System;
-using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 

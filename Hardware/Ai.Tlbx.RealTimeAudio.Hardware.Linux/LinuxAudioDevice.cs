@@ -1,13 +1,7 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
-using System.Linq;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Linux
 {

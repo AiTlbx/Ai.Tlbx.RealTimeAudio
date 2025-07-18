@@ -3,12 +3,7 @@ using Ai.Tlbx.RealTimeAudio.OpenAi;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using Microsoft.JSInterop;
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Text.Json;
-using System.Threading.Tasks;
-using System.Threading;
 
 namespace Ai.Tlbx.RealTimeAudio.Hardware.Web
 {

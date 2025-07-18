@@ -1,8 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Linq;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Tools;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models

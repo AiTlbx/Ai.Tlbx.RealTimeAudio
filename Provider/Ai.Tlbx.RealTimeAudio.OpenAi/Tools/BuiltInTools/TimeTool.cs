@@ -1,7 +1,3 @@
-using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
-using System;
-using System.Threading.Tasks;
-
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Tools.BuiltInTools
 {
     /// <summary>

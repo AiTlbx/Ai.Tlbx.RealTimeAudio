@@ -1,5 +1,3 @@
-using System;
-
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Events
 {
     /// <summary>

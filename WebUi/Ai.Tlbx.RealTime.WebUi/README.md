@@ -138,7 +138,7 @@ Used for chat interactions with real-time audio.
     private async Task HandleMessageSent(string message)
     {
         // Process the sent message
-        Console.WriteLine($"Message sent: {message}");
+        Debug.WriteLine($"Message sent: {message}");
     }
 }
 ```
@@ -152,13 +152,13 @@ Controls for starting and stopping AI talk interactions.
     private async Task StartAiTalk()
     {
         // Start AI interaction logic
-        Console.WriteLine("AI talk started");
+        Debug.WriteLine("AI talk started");
     }
 
     private async Task StopAiTalk()
     {
         // Stop AI interaction logic
-        Console.WriteLine("AI talk stopped");
+        Debug.WriteLine("AI talk stopped");
     }
 }
 ```
@@ -172,7 +172,7 @@ UI for testing microphone input.
     private async Task StartMicTest()
     {
         // Start microphone test logic
-        Console.WriteLine("Microphone test started");
+        Debug.WriteLine("Microphone test started");
     }
 }
 ```

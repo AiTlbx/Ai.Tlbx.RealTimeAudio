@@ -15,7 +15,7 @@ Layer 2 (Middle):  Hardware Access Providers (WebAudioAccess, WindowsAudioHardwa
                    ↓ (logs via SetLogAction)
 Layer 3 (Root):    OpenAiRealTimeApiAccess
                    ↓ (executes user-provided log action)
-User's Choice:     Debug.WriteLine, Console.WriteLine, Serilog, NLog, etc.
+User's Choice:     Debug.WriteLine, Serilog, NLog, etc.
 ```
 
 ## Implementation Details
@@ -100,10 +100,10 @@ var rta = new OpenAiRealTimeApiAccess(hardwareAccess, (level, message) =>
 ### Web Applications
 
 ```csharp
-// Hook to console for web applications
+// Hook to your preferred logging framework for web applications  
 var rta = new OpenAiRealTimeApiAccess(hardwareAccess, (level, message) => 
 {
-    Console.WriteLine($"[{level}] {message}");
+    logger.Log(ConvertLogLevel(level), message);
 });
 ```
 
@@ -123,7 +123,6 @@ var rta = new OpenAiRealTimeApiAccess(hardwareAccess, (level, message) =>
 
 - **Action<LogLevel, string>**: For all logging delegation
 - **Debug.WriteLine**: Only as fallback when no log action provided
-- **Console.WriteLine**: For demo applications and direct console output
 - **SetLogAction()**: For forwarding logs between layers
 
 ### ✅ Pattern for New Components

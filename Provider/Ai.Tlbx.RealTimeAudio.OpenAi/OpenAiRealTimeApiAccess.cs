@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Net.WebSockets;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Events;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Internal;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
@@ -150,8 +144,8 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             _apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY") 
                 ?? throw new InvalidOperationException("OPENAI_API_KEY environment variable is not set");
             
-            // Set up logging - use Debug.WriteLine as fallback if no log action provided
-            _logAction = logAction ?? ((level, message) => Debug.WriteLine($"[{level}] {message}"));
+            // Set up logging - no-op if no log action provided (user choice to not log)
+            _logAction = logAction ?? ((level, message) => { /* no-op */ });
             
             // Create logger
             _logger = CreateLogger(logAction);

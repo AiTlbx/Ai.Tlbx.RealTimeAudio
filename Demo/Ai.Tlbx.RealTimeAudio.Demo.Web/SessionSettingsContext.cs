@@ -1,4 +1,3 @@
-using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 using System.Collections.Generic;
 
 namespace Ai.Tlbx.RealTimeAudio.Demo.Web

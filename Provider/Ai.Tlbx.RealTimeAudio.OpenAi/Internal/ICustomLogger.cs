@@ -1,4 +1,3 @@
-using System;
 using Ai.Tlbx.RealTimeAudio.OpenAi.Models;
 
 namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal

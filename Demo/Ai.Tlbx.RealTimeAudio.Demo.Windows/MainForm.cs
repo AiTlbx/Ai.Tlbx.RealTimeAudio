@@ -203,7 +203,7 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
                 LogLevel.Info => "[Info]",
                 _ => "[Info]"
             };
-            Console.WriteLine($"{logPrefix} {message}");
+            Debug.WriteLine($"{logPrefix} {message}");
         }
 
         private void UpdateUIState()
