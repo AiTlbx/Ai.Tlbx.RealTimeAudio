@@ -93,21 +93,4 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Models
         ToolResultSent
     }
 
-    // LOGSTAT-3: StatusUpdateEventArgs class
-    public class StatusUpdateEventArgs : EventArgs
-    {
-        public StatusCategory Category { get; }
-        public StatusCode Code { get; }
-        public string Message { get; }
-        public Exception? Exception { get; }
-        public DateTime Timestamp { get; } = DateTime.UtcNow;
-        
-        public StatusUpdateEventArgs(StatusCategory category, StatusCode code, string message, Exception? exception = null)
-        {
-            Category = category;
-            Code = code;
-            Message = message;
-            Exception = exception;
-        }
-    }
 } 

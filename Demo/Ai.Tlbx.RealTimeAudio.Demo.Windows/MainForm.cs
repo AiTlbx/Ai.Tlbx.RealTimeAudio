@@ -25,8 +25,8 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             _audioService = new OpenAiRealTimeApiAccess(_audioHardware, LogMessage);
             
             // Hook up events
-            _audioService.MessageAdded += OnMessageAdded;
-            _audioService.ConnectionStatusChanged += OnConnectionStatusChanged;
+            _audioService.OnMessageAdded = OnMessageAdded;
+            _audioService.OnConnectionStatusChanged = OnConnectionStatusChanged;
             
             // Set default voice
             _audioService.CurrentVoice = AssistantVoice.Alloy;
@@ -51,11 +51,11 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             MessageBox.Show(errorMessage, "Audio Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
         
-        private void OnMessageAdded(object? sender, OpenAiChatMessage message)
+        private void OnMessageAdded(OpenAiChatMessage message)
         {
             if (InvokeRequired)
             {
-                Invoke(new Action(() => OnMessageAdded(sender, message)));
+                Invoke(new Action(() => OnMessageAdded(message)));
                 return;
             }
             
@@ -64,11 +64,11 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             txtTranscription.AppendText($"{rolePrefix}{message.Content}\r\n\r\n");
         }
         
-        private void OnConnectionStatusChanged(object? sender, string status)
+        private void OnConnectionStatusChanged(string status)
         {
             if (InvokeRequired)
             {
-                Invoke(new Action(() => OnConnectionStatusChanged(sender, status)));
+                Invoke(new Action(() => OnConnectionStatusChanged(status)));
                 return;
             }
             
@@ -223,8 +223,8 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Windows
             // Cleanup
             if (_audioService != null)
             {
-                _audioService.MessageAdded -= OnMessageAdded;
-                _audioService.ConnectionStatusChanged -= OnConnectionStatusChanged;
+                _audioService.OnMessageAdded = null;
+                _audioService.OnConnectionStatusChanged = null;
             }
             
             if (_audioHardware != null)

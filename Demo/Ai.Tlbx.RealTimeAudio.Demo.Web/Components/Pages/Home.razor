@@ -127,9 +127,9 @@
 
     protected override async Task OnInitializedAsync()
     {
-        rta.ConnectionStatusChanged += OnConnectionStatusChanged;
-        rta.MessageAdded += OnMessageAdded;
-        rta.MicrophoneDevicesChanged += OnMicrophoneDevicesChanged;
+        rta.OnConnectionStatusChanged = OnConnectionStatusChanged;
+        rta.OnMessageAdded = OnMessageAdded;
+        rta.OnMicrophoneDevicesChanged = OnMicrophoneDevicesChanged;
         
         // Listen for recording state changes
         PropertyChanged += OnPropertyChanged;
@@ -363,7 +363,7 @@
         await Task.CompletedTask;
     }
 
-    private void OnMicrophoneDevicesChanged(object? sender, List<AudioDeviceInfo> devices)
+    private void OnMicrophoneDevicesChanged(List<AudioDeviceInfo> devices)
     {
         InvokeAsync(async () => 
         {
@@ -378,7 +378,7 @@
         });
     }
 
-    private void OnConnectionStatusChanged(object? sender, string status)
+    private void OnConnectionStatusChanged(string status)
     {
         InvokeAsync(async () => 
         {
@@ -391,7 +391,7 @@
         });
     }
 
-    private void OnMessageAdded(object? sender, OpenAiChatMessage message)
+    private void OnMessageAdded(OpenAiChatMessage message)
     {
         InvokeAsync(async () => {
             StateHasChanged();
@@ -512,9 +512,9 @@
 
     public void Dispose()
     {
-        rta.ConnectionStatusChanged -= OnConnectionStatusChanged;
-        rta.MessageAdded -= OnMessageAdded;
-        rta.MicrophoneDevicesChanged -= OnMicrophoneDevicesChanged;
+        rta.OnConnectionStatusChanged = null;
+        rta.OnMessageAdded = null;
+        rta.OnMicrophoneDevicesChanged = null;
         PropertyChanged -= OnPropertyChanged;
     }
 

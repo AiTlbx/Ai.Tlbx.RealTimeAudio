@@ -34,28 +34,21 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         private OpenAiRealTimeSettings _settings = new OpenAiRealTimeSettings();
         private DateTime _sessionStartTime = DateTime.MinValue;
         
-        // Events
+        // UI Callbacks - Direct actions for simple 1:1 communication
         /// <summary>
-        /// Event that fires when the connection status changes.
+        /// Callback that fires when the connection status changes.
         /// </summary>
-        public event EventHandler<string>? ConnectionStatusChanged;
+        public Action<string>? OnConnectionStatusChanged { get; set; }
         
         /// <summary>
-        /// Event that fires when a new message is added to the chat history.
+        /// Callback that fires when a new message is added to the chat history.
         /// </summary>
-        public event EventHandler<OpenAiChatMessage>? MessageAdded;
-                        
-        
+        public Action<OpenAiChatMessage>? OnMessageAdded { get; set; }
         
         /// <summary>
-        /// Event that fires when the list of microphone devices changes.
+        /// Callback that fires when the list of microphone devices changes.
         /// </summary>
-        public event EventHandler<List<AudioDeviceInfo>>? MicrophoneDevicesChanged;
-        
-        /// <summary>
-        /// Event that fires when the status is updated.
-        /// </summary>
-        public event EventHandler<StatusUpdateEventArgs>? StatusUpdated;
+        public Action<List<AudioDeviceInfo>>? OnMicrophoneDevicesChanged { get; set; }
 
         // Public properties
         /// <summary>
@@ -107,11 +100,6 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             set => _settings.Voice = value;
         }
 
-        /// <summary>
-        /// Gets the turn detection settings (obsolete, use Settings.TurnDetection instead).
-        /// </summary>
-        [Obsolete("Use Settings.TurnDetection instead. This property will be removed in a future version.")]
-        public TurnDetectionSettings TurnDetectionSettings => _settings.TurnDetection;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="OpenAiRealTimeApiAccess"/> class.
@@ -351,7 +339,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             try
             {
                 var devices = await _hardwareAccess.GetAvailableMicrophones();
-                MicrophoneDevicesChanged?.Invoke(this, devices);
+                OnMicrophoneDevicesChanged?.Invoke(devices);
                 return devices;
             }
             catch (Exception ex)
@@ -371,7 +359,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             try
             {
                 var devices = await _hardwareAccess.RequestMicrophonePermissionAndGetDevices();
-                MicrophoneDevicesChanged?.Invoke(this, devices);
+                OnMicrophoneDevicesChanged?.Invoke(devices);
                 return devices;
             }
             catch (Exception ex)
@@ -559,7 +547,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
         {
             // WebSocket events
             _webSocketConnection.MessageReceived += OnWebSocketMessageReceived;
-            _webSocketConnection.ConnectionStatusChanged += OnWebSocketStatusChanged;
+            _webSocketConnection.OnConnectionStatusChanged = OnWebSocketStatusChanged;
             
             // Audio manager events
             _audioManager.StatusChanged += OnAudioManagerStatusChanged;
@@ -573,16 +561,16 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
             }
         }
 
-        private void OnWebSocketStatusChanged(object? sender, string status)
+        private void OnWebSocketStatusChanged(string status)
         {
             _connectionStatus = status;
-            ConnectionStatusChanged?.Invoke(this, status);
+            OnConnectionStatusChanged?.Invoke(status);
         }
 
         private void OnAudioManagerStatusChanged(object? sender, string status)
         {
             _connectionStatus = status;
-            ConnectionStatusChanged?.Invoke(this, status);
+            OnConnectionStatusChanged?.Invoke(status);
         }
 
         private void ReportStatus(StatusCategory category, StatusCode code, string message, Exception? exception = null)
@@ -609,8 +597,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 _logger.Log(LogLevel.Error, $"Exception: {exception.Message}", exception);
             }
             
-            ConnectionStatusChanged?.Invoke(this, message);
-            StatusUpdated?.Invoke(this, new StatusUpdateEventArgs(category, code, message, exception));
+            OnConnectionStatusChanged?.Invoke(message);
         }
 
         private ICustomLogger CreateLogger(Action<LogLevel, string>? logAction)
@@ -656,10 +643,10 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi
                 SendMessageAsync);
             
             // Wire up message processor events
-            _messageProcessor.MessageAdded += (sender, message) => MessageAdded?.Invoke(this, message);
-            _messageProcessor.StatusChanged += (sender, status) => {
+            _messageProcessor.OnMessageAdded = message => OnMessageAdded?.Invoke(message);
+            _messageProcessor.OnStatusChanged = status => {
                 _connectionStatus = status;
-                ConnectionStatusChanged?.Invoke(this, status);
+                OnConnectionStatusChanged?.Invoke(status);
             };
         }
     }

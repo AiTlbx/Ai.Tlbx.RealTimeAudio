@@ -15,6 +15,7 @@
   <Folder Name="/Solution Items/">
     <File Path=".editorconfig" />
     <File Path=".gitignore" />
+    <File Path="LoggingStrategy.md" />
     <File Path="publish-nuget.ps1" />
     <File Path="README.md" />
     <File Path="version.txt" />

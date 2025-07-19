@@ -39,11 +39,11 @@
         if (RealTimeApi != null)
         {
             // Subscribe to the message added event to update the chat
-            RealTimeApi.MessageAdded += OnMessageAdded;
+            RealTimeApi.OnMessageAdded = OnMessageAdded;
         }
     }
     
-    private void OnMessageAdded(object? sender, OpenAiChatMessage message)
+    private void OnMessageAdded(OpenAiChatMessage message)
     {
         MessageType type = MessageType.Ai;
         
@@ -69,7 +69,7 @@
     {
         if (RealTimeApi != null)
         {
-            RealTimeApi.MessageAdded -= OnMessageAdded;
+            RealTimeApi.OnMessageAdded = null;
         }
     }
 }

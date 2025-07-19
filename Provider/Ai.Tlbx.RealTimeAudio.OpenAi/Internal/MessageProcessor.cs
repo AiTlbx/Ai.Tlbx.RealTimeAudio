@@ -24,15 +24,14 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         private bool _hasActiveResponse = false;
 
         /// <summary>
-        /// Event that fires when a new message is added to the chat history.
+        /// Callback that fires when a new message is added to the chat history.
         /// </summary>
-        public event EventHandler<OpenAiChatMessage>? MessageAdded;
-
+        public Action<OpenAiChatMessage>? OnMessageAdded { get; set; }
 
         /// <summary>
-        /// Event that fires when the connection status changes.
+        /// Callback that fires when the connection status changes.
         /// </summary>
-        public event EventHandler<string>? StatusChanged;
+        public Action<string>? OnStatusChanged { get; set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="MessageProcessor"/> class.
@@ -87,12 +86,12 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
             }
             catch (JsonException jsonEx)
             {
-                StatusChanged?.Invoke(this, $"Error parsing JSON message: {jsonEx.Message}");
+                OnStatusChanged?.Invoke($"Error parsing JSON message: {jsonEx.Message}");
                 _structuredLogger.LogError("JSON parsing", jsonEx, new { JsonPreview = json.Substring(0, Math.Min(100, json.Length)) });
             }
             catch (Exception ex)
             {
-                StatusChanged?.Invoke(this, $"Error handling message: {ex.Message}");
+                OnStatusChanged?.Invoke($"Error handling message: {ex.Message}");
                 _structuredLogger.LogError("Message processing", ex, new { JsonPreview = json.Substring(0, Math.Min(100, json.Length)) });
             }
         }
@@ -208,7 +207,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
 
             string errorDetails = $"Error: {errorType}, Code: {errorCode}, Message: {errorMessage}";
             _logger.Log(LogLevel.Error, errorDetails);
-            StatusChanged?.Invoke(this, $"OpenAI API Error: {errorMessage}");
+            OnStatusChanged?.Invoke($"OpenAI API Error: {errorMessage}");
             return Task.CompletedTask;
         }
 
@@ -315,7 +314,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                             {
                                 var message = new OpenAiChatMessage(completeMessage, "assistant");
                                 _chatHistory.AddMessage(message);
-                                MessageAdded?.Invoke(this, message);
+                                OnMessageAdded?.Invoke(message);
                                 _logger.Log(LogLevel.Info, "Added message to chat history via response.done");
                             }
                             
@@ -364,7 +363,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 {
                     var message = new OpenAiChatMessage(messageText, "assistant");
                     _chatHistory.AddMessage(message);
-                    MessageAdded?.Invoke(this, message);
+                    OnMessageAdded?.Invoke(message);
                     _structuredLogger.Log(LogLevel.Info, "Added text message to chat history");
                 }
                 
@@ -384,9 +383,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     
                     var message = new OpenAiChatMessage(transcript, "user");
                     _chatHistory.AddMessage(message);
-                    MessageAdded?.Invoke(this, message);
+                    OnMessageAdded?.Invoke(message);
                     _currentUserMessage.Clear();
-                    StatusChanged?.Invoke(this, "User said: " + transcript);
+                    OnStatusChanged?.Invoke("User said: " + transcript);
                 }
             }
             return Task.CompletedTask;
@@ -395,7 +394,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         private async Task HandleSpeechStartedAsync()
         {
             _structuredLogger.Log(LogLevel.Info, "Speech detected");
-            StatusChanged?.Invoke(this, "Speech detected");
+            OnStatusChanged?.Invoke("Speech detected");
             
             // Only cancel if there's an active response
             if (_hasActiveResponse)
@@ -416,7 +415,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         private void HandleSpeechStopped()
         {
             _structuredLogger.Log(LogLevel.Info, "Speech ended - processing user input");
-            StatusChanged?.Invoke(this, "Speech ended");
+            OnStatusChanged?.Invoke("Speech ended");
         }
 
         private void HandleConversationItemStart(JsonElement root)
@@ -467,9 +466,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     {
                         var message = new OpenAiChatMessage(messageText, "assistant");
                         _chatHistory.AddMessage(message);
-                        MessageAdded?.Invoke(this, message);
+                        OnMessageAdded?.Invoke(message);
                         _currentAiMessage.Clear();
-                        StatusChanged?.Invoke(this, "Received complete message from assistant");
+                        OnStatusChanged?.Invoke("Received complete message from assistant");
                     }
                 }
             }
@@ -500,7 +499,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 // Add Tool Call message to history
                 var toolCallMessage = OpenAiChatMessage.CreateToolCallMessage(functionName, argumentsJson);
                 _chatHistory.AddMessage(toolCallMessage);
-                MessageAdded?.Invoke(this, toolCallMessage);
+                OnMessageAdded?.Invoke(toolCallMessage);
                 
                 // Find the tool
                 var tool = FindToolForArguments(functionName, argumentsJson);
@@ -514,7 +513,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                         
                         var toolResultMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name ?? "unknown_tool", result);
                         _chatHistory.AddMessage(toolResultMessage);
-                        MessageAdded?.Invoke(this, toolResultMessage);
+                        OnMessageAdded?.Invoke(toolResultMessage);
                         
                         await SendToolResultAsync(callId, result);
                     }
@@ -525,7 +524,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                         
                         var toolErrorMessage = OpenAiChatMessage.CreateToolResultMessage(tool.Name ?? "unknown_tool", errorResult);
                         _chatHistory.AddMessage(toolErrorMessage);
-                        MessageAdded?.Invoke(this, toolErrorMessage);
+                        OnMessageAdded?.Invoke(toolErrorMessage);
                         
                         await SendToolResultAsync(callId, errorResult);
                     }
@@ -537,7 +536,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     
                     var toolNotFoundMessage = OpenAiChatMessage.CreateToolResultMessage("unknown_tool", errorResult);
                     _chatHistory.AddMessage(toolNotFoundMessage);
-                    MessageAdded?.Invoke(this, toolNotFoundMessage);
+                    OnMessageAdded?.Invoke(toolNotFoundMessage);
                     
                     await SendToolResultAsync(callId, errorResult);
                 }

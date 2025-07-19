@@ -65,11 +65,8 @@ namespace Ai.Tlbx.RealTimeAudio.Demo.Linux
                     settings.Instructions = $"You are a helpful AI assistant using the {_openAiModel} model. Be friendly, conversational, helpful, and engaging. When the user speaks interrupt your answer and listen and then answer the new question.";
                 }
                 
-                // Subscribe to status updates
-                _apiAccess.StatusUpdated += (sender, e) =>
-                {
-                    logAction(LogLevel.Info, $"Status: {e.Category} - {e.Code}: {e.Message}");
-                };
+                // Subscribe to status updates via connection status callback
+                _apiAccess.OnConnectionStatusChanged = status => logAction(LogLevel.Info, $"Status: {status}");
                 
                 // UI and controls
                 logAction(LogLevel.Info, "\nCommands:");

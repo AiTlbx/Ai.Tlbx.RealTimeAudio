@@ -33,9 +33,9 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
         public event EventHandler<string>? MessageReceived;
 
         /// <summary>
-        /// Event that fires when the connection status changes.
+        /// Callback that fires when the connection status changes.
         /// </summary>
-        public event EventHandler<string>? ConnectionStatusChanged;
+        public Action<string>? OnConnectionStatusChanged { get; set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="WebSocketConnection"/> class.
@@ -84,7 +84,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     _webSocket.Options.KeepAliveInterval = TimeSpan.FromSeconds(30);
                     
                     _logger.Log(LogLevel.Info, $"Connecting to OpenAI API, attempt {i + 1} of {MAX_RETRY_ATTEMPTS}...");
-                    ConnectionStatusChanged?.Invoke(this, $"Connecting to OpenAI API ({i + 1}/{MAX_RETRY_ATTEMPTS})...");
+                    OnConnectionStatusChanged?.Invoke($"Connecting to OpenAI API ({i + 1}/{MAX_RETRY_ATTEMPTS})...");
 
                     using var cts = new CancellationTokenSource(CONNECTION_TIMEOUT_MS);
                     using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, cts.Token);
@@ -110,7 +110,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     _webSocket = null;
                     
                     _logger.Log(LogLevel.Error, $"WebSocket error on connect attempt {i + 1}: {wsEx.Message}, WebSocketErrorCode: {wsEx.WebSocketErrorCode}", wsEx);
-                    ConnectionStatusChanged?.Invoke(this, $"Connection error: {wsEx.Message}");
+                    OnConnectionStatusChanged?.Invoke($"Connection error: {wsEx.Message}");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -125,7 +125,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     _webSocket = null;
                     
                     _logger.Log(LogLevel.Error, $"Connection timeout on attempt {i + 1}");
-                    ConnectionStatusChanged?.Invoke(this, $"Connection timeout");
+                    OnConnectionStatusChanged?.Invoke($"Connection timeout");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -140,7 +140,7 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     _webSocket = null;
                     
                     _logger.Log(LogLevel.Error, $"Connect attempt {i + 1} failed: {ex.Message}", ex);
-                    ConnectionStatusChanged?.Invoke(this, $"Connection error: {ex.Message}");
+                    OnConnectionStatusChanged?.Invoke($"Connection error: {ex.Message}");
                     
                     if (i < MAX_RETRY_ATTEMPTS - 1) 
                     {
@@ -251,17 +251,17 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                     if (wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                     {
                         _logger.Log(LogLevel.Warn, "Connection closed prematurely by server");
-                        ConnectionStatusChanged?.Invoke(this, "Connection closed by server, will attempt to reconnect if needed");
+                        OnConnectionStatusChanged?.Invoke("Connection closed by server, will attempt to reconnect if needed");
                         break; // Exit the loop to allow reconnection logic to run
                     }
                     else
                     {
                         _logger.Log(LogLevel.Error, $"WebSocket error: {wsEx.Message}, ErrorCode: {wsEx.WebSocketErrorCode}", wsEx);
-                        ConnectionStatusChanged?.Invoke(this, $"WebSocket error: {wsEx.Message}");
+                        OnConnectionStatusChanged?.Invoke($"WebSocket error: {wsEx.Message}");
                         
                         if (consecutiveErrorCount > 3)
                         {
-                            ConnectionStatusChanged?.Invoke(this, "Too many consecutive WebSocket errors, reconnecting...");
+                            OnConnectionStatusChanged?.Invoke("Too many consecutive WebSocket errors, reconnecting...");
                             break;
                         }
                     }
@@ -275,11 +275,11 @@ namespace Ai.Tlbx.RealTimeAudio.OpenAi.Internal
                 {
                     consecutiveErrorCount++;
                     _logger.Log(LogLevel.Error, $"Receive error: {ex.Message}", ex);
-                    ConnectionStatusChanged?.Invoke(this, $"Receive error: {ex.Message}");
+                    OnConnectionStatusChanged?.Invoke($"Receive error: {ex.Message}");
                     
                     if (consecutiveErrorCount > 3)
                     {
-                        ConnectionStatusChanged?.Invoke(this, "Too many consecutive receive errors, reconnecting...");
+                        OnConnectionStatusChanged?.Invoke("Too many consecutive receive errors, reconnecting...");
                         break;
                     }
                     
