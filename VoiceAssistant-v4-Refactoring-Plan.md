@@ -187,14 +187,15 @@ public class VoiceAssistant : IAsyncDisposable
 - Create `VoiceAssistant` orchestrator class with composition-based design
 - Create provider-agnostic `ChatMessage` model (remove OpenAI-specific fields)
 - Move and adapt `ChatHistoryManager` from OpenAI project to work with generic `ChatMessage`
-- Create `VoiceAssistantFactory` class with factory methods
+- Create `VoiceAssistantBuilder` class for fluent DI configuration
 
 **Key Files Created**:
 - `Ai.Tlbx.VoiceAssistant/VoiceAssistant.cs`
 - `Ai.Tlbx.VoiceAssistant/Interfaces/IVoiceProvider.cs`
 - `Ai.Tlbx.VoiceAssistant/Interfaces/IVoiceSettings.cs` 
 - `Ai.Tlbx.VoiceAssistant/Models/ChatMessage.cs`
-- `Ai.Tlbx.VoiceAssistant/VoiceAssistantFactory.cs`
+- `Ai.Tlbx.VoiceAssistant/Extensions/ServiceCollectionExtensions.cs`
+- `Ai.Tlbx.VoiceAssistant/Configuration/VoiceAssistantBuilder.cs`
 
 ### Phase 2: Extract OpenAI Provider
 **Goal**: Transform current OpenAI implementation into pluggable provider
@@ -250,38 +251,55 @@ public class VoiceAssistant : IAsyncDisposable
   - `Ai.Tlbx.RealTimeAudio.Demo.Windows` → `Ai.Tlbx.VoiceAssistant.Demo.Windows`
   - `Ai.Tlbx.RealTimeAudio.Demo.Linux` → `Ai.Tlbx.VoiceAssistant.Demo.Linux`  
   - `Ai.Tlbx.RealTimeAudio.Demo.Web` → `Ai.Tlbx.VoiceAssistant.Demo.Web`
-- Update all demo code to use new factory pattern and `VoiceAssistant` class
+- Update all demo code to use new fluent DI pattern and `VoiceAssistant` class
 - Update package references in all demo projects
 
-### Phase 5: Implement Factory Pattern
-**Goal**: Provide clean, intuitive API for provider selection
+### Phase 5: Implement Fluent DI Pattern
+**Goal**: Provide clean, DI-optimized fluent API for provider and hardware selection
 
 **Actions**:
-- Implement `VoiceAssistantFactory.CreateOpenAi()` method in main package
-- Implement generic `VoiceAssistantFactory.Create<TProvider>()` method for extensibility
-- Add convenient static methods for common provider scenarios
-- Document usage patterns for different providers
+- Implement `IServiceCollection.AddVoiceAssistant()` extension method in main package
+- Create fluent builder pattern with `.WithProvider()` and `.WithHardware()` methods
+- Support configuration callbacks for provider-specific settings
+- Ensure proper DI registration of all components
+- Support multiple provider registration scenarios
 
-**Factory Implementation**:
+**Fluent DI Implementation**:
 ```csharp
-public static class VoiceAssistantFactory
+// Main extension point
+public static class ServiceCollectionExtensions
 {
-    public static VoiceAssistant CreateOpenAi(
-        IAudioHardwareAccess hardware, 
-        string apiKey, 
-        Action<LogLevel, string>? logger = null)
+    public static VoiceAssistantBuilder AddVoiceAssistant(this IServiceCollection services)
     {
-        var provider = new OpenAiVoiceProvider(apiKey, logger);
-        return new VoiceAssistant(hardware, provider, logger);
+        services.AddSingleton<VoiceAssistant>();
+        return new VoiceAssistantBuilder(services);
+    }
+}
+
+// Fluent builder for chaining configuration
+public class VoiceAssistantBuilder
+{
+    private readonly IServiceCollection _services;
+    
+    public VoiceAssistantBuilder WithProviderOpenAi(string? apiKey = null)
+    {
+        _services.AddSingleton<IVoiceProvider, OpenAiVoiceProvider>();
+        if (apiKey != null)
+            _services.Configure<OpenAiVoiceSettings>(s => s.ApiKey = apiKey);
+        return this;
     }
     
-    public static VoiceAssistant Create<TProvider>(
-        IAudioHardwareAccess hardware, 
-        TProvider provider, 
-        Action<LogLevel, string>? logger = null)
-        where TProvider : IVoiceProvider
+    public VoiceAssistantBuilder WithHardwareWeb()
     {
-        return new VoiceAssistant(hardware, provider, logger);
+        _services.AddSingleton<IAudioHardwareAccess, WebAudioAccess>();
+        return this;
+    }
+    
+    public VoiceAssistantBuilder WithSettings<TSettings>(Action<TSettings> configure)
+        where TSettings : class, IVoiceSettings
+    {
+        _services.Configure(configure);
+        return this;
     }
 }
 ```
@@ -306,6 +324,8 @@ public static class VoiceAssistantFactory
 
 ### Files Being Created
 - `Ai.Tlbx.VoiceAssistant/VoiceAssistant.cs` (main orchestrator)
+- `Ai.Tlbx.VoiceAssistant/Extensions/ServiceCollectionExtensions.cs` (DI extensions)
+- `Ai.Tlbx.VoiceAssistant/Configuration/VoiceAssistantBuilder.cs` (fluent builder)
 - `Ai.Tlbx.VoiceAssistant.Provider.OpenAi/OpenAiVoiceProvider.cs` (provider implementation)
 - `Ai.Tlbx.VoiceAssistant.Provider.OpenAi/OpenAiVoiceSettings.cs` (provider settings)
 
@@ -364,70 +384,118 @@ Install-Package Ai.Tlbx.VoiceAssistant.Provider.OpenAi
 Install-Package Ai.Tlbx.VoiceAssistant.Hardware.Windows
 ```
 
-### Code Usage Pattern
+### Code Usage Pattern (Fluent DI)
 ```csharp
-// v4.0 API using composition and factory
+// v4.0 API using fluent DI configuration
 using Ai.Tlbx.VoiceAssistant;
 using Ai.Tlbx.VoiceAssistant.Provider.OpenAi;
-using Ai.Tlbx.VoiceAssistant.Hardware.Windows;
+using Ai.Tlbx.VoiceAssistant.Hardware.Web;
 
-var hardware = new WindowsAudioHardware();
-var assistant = VoiceAssistantFactory.CreateOpenAi(hardware, apiKey, logger);
+// DI configuration (Program.cs or Startup.cs)
+services.AddVoiceAssistant()
+    .WithProviderOpenAi(apiKey)
+    .WithHardwareWeb()
+    .WithSettings<OpenAiVoiceSettings>(s => 
+    {
+        s.Voice = OpenAiVoice.Nova;
+        s.Instructions = "You are a helpful assistant";
+    });
 
-assistant.OnMessageAdded = message => UpdateUI(message);
-assistant.OnConnectionStatusChanged = status => UpdateStatus(status);
-
-await assistant.StartAsync(new OpenAiVoiceSettings 
+// Usage in controllers/components
+public class VoiceController : ControllerBase
 {
-    Voice = OpenAiVoice.Nova,
-    Instructions = "You are a helpful assistant"
-});
+    private readonly VoiceAssistant _assistant;
+    
+    public VoiceController(VoiceAssistant assistant)
+    {
+        _assistant = assistant;
+        _assistant.OnMessageAdded = message => UpdateUI(message);
+        _assistant.OnConnectionStatusChanged = status => UpdateStatus(status);
+    }
+    
+    public async Task<IActionResult> Start()
+    {
+        await _assistant.StartAsync();
+        return Ok();
+    }
+}
 ```
 
-### Future Provider Support
+### Future Provider Support (Same DI Pattern)
 ```csharp
-// Future Google provider support (same pattern)
-var assistant = VoiceAssistantFactory.CreateGoogle(hardware, googleApiKey, logger);
-await assistant.StartAsync(new GoogleVoiceSettings 
-{
-    Voice = GoogleVoice.Neural2,
-    Instructions = "You are a helpful assistant"
-});
+// Future Google provider support
+services.AddVoiceAssistant()
+    .WithProviderGoogle(googleApiKey)
+    .WithHardwareWeb()
+    .WithSettings<GoogleVoiceSettings>(s => 
+    {
+        s.Voice = GoogleVoice.Neural2;
+        s.Instructions = "You are a helpful assistant";
+    });
+
+// Multiple providers in same application
+services.AddVoiceAssistant("openai")
+    .WithProviderOpenAi(openAiKey)
+    .WithHardwareWeb();
+    
+services.AddVoiceAssistant("google")  
+    .WithProviderGoogle(googleKey)
+    .WithHardwareWeb();
 ```
 
 ## Breaking Changes Documentation
 
 ### v3.x → v4.0 Breaking Changes
 1. **Package Names**: All packages renamed from `Ai.Tlbx.RealTimeAudio.*` to `Ai.Tlbx.VoiceAssistant.*`
-2. **Main Class**: `OpenAiRealTimeApiAccess` deleted, replaced with `VoiceAssistant` + provider composition
-3. **Factory Pattern**: Must use `VoiceAssistantFactory.CreateOpenAi()` or manual composition
+2. **Main Class**: `OpenAiRealTimeApiAccess` deleted, replaced with `VoiceAssistant` + provider composition  
+3. **DI Pattern**: Must use fluent `services.AddVoiceAssistant().WithProviderOpenAi()` configuration
 4. **Settings Classes**: `OpenAiRealTimeSettings` → `OpenAiVoiceSettings`
 5. **Hardware Dependencies**: Hardware packages now reference main package instead of OpenAI package
 6. **Callback Naming**: Maintain same callback pattern (OnMessageAdded, etc.) for UI compatibility
 
 ### Migration Guide for Existing Users
 ```csharp
-// v3.x code
+// v3.x code (manual instantiation)
 var api = new OpenAiRealTimeApiAccess(hardware, logger);
 api.OnMessageAdded = msg => UpdateUI(msg);
 await api.Start(new OpenAiRealTimeSettings { Voice = AssistantVoice.Nova });
 
-// v4.0 equivalent
-var assistant = VoiceAssistantFactory.CreateOpenAi(hardware, apiKey, logger);
-assistant.OnMessageAdded = msg => UpdateUI(msg);
-await assistant.StartAsync(new OpenAiVoiceSettings { Voice = OpenAiVoice.Nova });
+// v4.0 equivalent (DI-based)
+// Configuration in Program.cs/Startup.cs
+services.AddVoiceAssistant()
+    .WithProviderOpenAi(apiKey)
+    .WithHardwareWeb()
+    .WithSettings<OpenAiVoiceSettings>(s => s.Voice = OpenAiVoice.Nova);
+
+// Usage in controllers/components
+public class MyController : ControllerBase
+{
+    private readonly VoiceAssistant _assistant;
+    
+    public MyController(VoiceAssistant assistant)
+    {
+        _assistant = assistant;
+        _assistant.OnMessageAdded = msg => UpdateUI(msg);
+    }
+    
+    public async Task<IActionResult> StartVoice()
+    {
+        await _assistant.StartAsync();
+        return Ok();
+    }
+}
 ```
 
 ## Success Criteria
 
-### Technical Validation
-- [ ] All packages build successfully with new structure
-- [ ] All existing demo applications work with new API
-- [ ] WebUI components work with new orchestrator
-- [ ] Factory pattern creates working VoiceAssistant instances
-- [ ] OpenAI provider maintains all current functionality
-- [ ] Hardware packages work with main package instead of OpenAI package
-- [ ] NuGet publish script works with new package structure
+### Technical Validation (Build and Compile Checks Only)
+- [ ] All packages build successfully with new structure (`dotnet build`)
+- [ ] All projects compile without errors or warnings (`dotnet build --verbosity normal`)
+- [ ] Package references resolve correctly across all projects
+- [ ] Fluent DI extensions compile and provide expected IntelliSense
+- [ ] OpenAI provider implementation compiles against IVoiceProvider interface
+- [ ] Hardware packages compile with main package references instead of OpenAI package
+- [ ] NuGet packaging script generates all expected packages (`dotnet pack`)
 
 ### Architectural Validation  
 - [ ] Clear separation between orchestration and provider concerns
@@ -438,6 +506,6 @@ await assistant.StartAsync(new OpenAiVoiceSettings { Voice = OpenAiVoice.Nova })
 
 ### User Experience Validation
 - [ ] Package installation is intuitive (main + provider + hardware)
-- [ ] Factory methods provide clean API
+- [ ] Fluent DI methods provide clean, discoverable API
 - [ ] Migration path from v3.x is documented and straightforward
 - [ ] Future provider addition requires no changes to existing UI code
